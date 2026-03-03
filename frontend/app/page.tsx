@@ -9,9 +9,12 @@ import {
   useState,
 } from "react";
 
+import { AuthModal } from "./components/AuthModal";
 import { ChatPanel } from "./components/ChatPanel";
+import { RightNav } from "./components/RightNav";
 import { RoomSidebar } from "./components/RoomSidebar";
 import { StreamExperience } from "./components/StreamExperience";
+import { TopNav } from "./components/TopNav";
 import { VideoExperience } from "./components/VideoExperience";
 import { usePersistentUserId } from "./hooks/usePersistentUserId";
 import {
@@ -134,6 +137,7 @@ export default function Home() {
   const [videoParticipantIds, setVideoParticipantIds] = useState<string[]>([]);
 
   const [statusNote, setStatusNote] = useState("Ready");
+  const [authOpen, setAuthOpen] = useState(false);
 
   const activeRoom = useMemo(
     () => rooms.find((room) => room.id === activeRoomId) ?? null,
@@ -1064,111 +1068,108 @@ export default function Home() {
     videoParticipantIds.length + (videoJoined ? 1 : 0);
 
   return (
-    <main className="shell">
-      <header className="hero">
-        <p className="eyebrow">Punch</p>
-        <h1>Streams and live rooms in one place.</h1>
-        <p className="lede">
-          Build Twitch-style channel browsing and Discord-style webcam rooms.
-          Backend: <strong>{health?.ok ? "healthy" : "down"}</strong>. Chat
-          socket: <strong>{chatSocketState}</strong>. Signal socket:{" "}
-          <strong>{signalSocketState}</strong>.
-        </p>
-        <p className="status">
-          User: {userIdRef.current}. Status: {statusNote}
-        </p>
-      </header>
+    <div className="app-shell">
+      <TopNav onOpenAuth={() => setAuthOpen(true)} />
 
-      <section className="grid">
-        <RoomSidebar
-          activeRoomId={activeRoomId}
-          liveStreams={liveStreams}
-          onCreateRoom={submitCreateRoom}
-          onRoomKindDraftChange={setRoomKindDraft}
-          onRoomNameDraftChange={setRoomNameDraft}
-          onSelectRoom={handleSelectRoom}
-          roomKindDraft={roomKindDraft}
-          roomNameById={roomNameById}
-          roomNameDraft={roomNameDraft}
-          rooms={rooms}
+      <RoomSidebar
+        activeRoomId={activeRoomId}
+        liveStreams={liveStreams}
+        onCreateRoom={submitCreateRoom}
+        onRoomKindDraftChange={setRoomKindDraft}
+        onRoomNameDraftChange={setRoomNameDraft}
+        onSelectRoom={handleSelectRoom}
+        roomKindDraft={roomKindDraft}
+        roomNameById={roomNameById}
+        roomNameDraft={roomNameDraft}
+        rooms={rooms}
+      />
+
+      <section className="main-panel">
+        <header className="room-head">
+          <h2>{activeRoom ? activeRoom.name : "No room selected"}</h2>
+          <span>{activeRoom ? activeRoom.kind : ""}</span>
+        </header>
+
+        <div className="experience">
+          {activeRoom?.kind === "stream" ? (
+            <StreamExperience
+              knownStreamHostId={knownStreamHostId}
+              onFindStream={() =>
+                sendSignal({
+                  kind: "peer.announce",
+                  mode: "stream",
+                  role: "viewer",
+                  target_user_id: knownStreamHostId ?? undefined,
+                })
+              }
+              onStartBroadcast={() => {
+                startBroadcast().catch(() => {
+                  setStatusNote("Failed to start broadcast.");
+                });
+              }}
+              onStopBroadcast={() => {
+                stopBroadcast().catch(() => {
+                  setStatusNote("Could not stop stream cleanly.");
+                });
+              }}
+              onStreamTitleDraftChange={setStreamTitleDraft}
+              streamLocalVideoRef={streamLocalVideoRef}
+              streamMode={streamMode}
+              streamPreviewVideoRef={streamPreviewVideoRef}
+              streamRemoteVideoRef={streamRemoteVideoRef}
+              streamTitleDraft={streamTitleDraft}
+              streamViewerCount={streamViewerIds.length}
+            />
+          ) : null}
+
+          {activeRoom?.kind === "video" ? (
+            <VideoExperience
+              getRemoteVideoStream={(remoteUserId) =>
+                videoRemoteStreamsRef.current.get(remoteUserId) ?? null
+              }
+              onJoinVideoRoom={() => {
+                joinVideoRoom().catch(() => {
+                  setStatusNote("Could not join video room.");
+                });
+              }}
+              onLeaveVideoRoom={() => leaveVideoRoom()}
+              videoJoined={videoJoined}
+              videoLocalVideoRef={videoLocalVideoRef}
+              videoParticipantCount={videoParticipantCount}
+              videoRemoteUserIds={videoRemoteUserIds}
+            />
+          ) : null}
+
+          {activeRoom &&
+          activeRoom.kind !== "stream" &&
+          activeRoom.kind !== "video" ? (
+            <section className="mode-panel">
+              <p className="muted">
+                This is a <strong>{activeRoom.kind}</strong> room. Text chat
+                below is live.
+              </p>
+            </section>
+          ) : null}
+        </div>
+
+        <ChatPanel
+          draft={draft}
+          messages={messages}
+          onDraftChange={setDraft}
+          onSubmit={submitMessage}
         />
-
-        <section className="panel workspace">
-          <header className="room-head">
-            <h2>{activeRoom ? activeRoom.name : "No room selected"}</h2>
-            <span>{activeRoom ? activeRoom.kind : ""}</span>
-          </header>
-
-          <div className="experience">
-            {activeRoom?.kind === "stream" ? (
-              <StreamExperience
-                knownStreamHostId={knownStreamHostId}
-                onFindStream={() =>
-                  sendSignal({
-                    kind: "peer.announce",
-                    mode: "stream",
-                    role: "viewer",
-                    target_user_id: knownStreamHostId ?? undefined,
-                  })
-                }
-                onStartBroadcast={() => {
-                  startBroadcast().catch(() => {
-                    setStatusNote("Failed to start broadcast.");
-                  });
-                }}
-                onStopBroadcast={() => {
-                  stopBroadcast().catch(() => {
-                    setStatusNote("Could not stop stream cleanly.");
-                  });
-                }}
-                onStreamTitleDraftChange={setStreamTitleDraft}
-                streamLocalVideoRef={streamLocalVideoRef}
-                streamMode={streamMode}
-                streamPreviewVideoRef={streamPreviewVideoRef}
-                streamRemoteVideoRef={streamRemoteVideoRef}
-                streamTitleDraft={streamTitleDraft}
-                streamViewerCount={streamViewerIds.length}
-              />
-            ) : null}
-
-            {activeRoom?.kind === "video" ? (
-              <VideoExperience
-                getRemoteVideoStream={(remoteUserId) =>
-                  videoRemoteStreamsRef.current.get(remoteUserId) ?? null
-                }
-                onJoinVideoRoom={() => {
-                  joinVideoRoom().catch(() => {
-                    setStatusNote("Could not join video room.");
-                  });
-                }}
-                onLeaveVideoRoom={() => leaveVideoRoom()}
-                videoJoined={videoJoined}
-                videoLocalVideoRef={videoLocalVideoRef}
-                videoParticipantCount={videoParticipantCount}
-                videoRemoteUserIds={videoRemoteUserIds}
-              />
-            ) : null}
-
-            {activeRoom &&
-            activeRoom.kind !== "stream" &&
-            activeRoom.kind !== "video" ? (
-              <section className="mode-panel">
-                <p className="muted">
-                  This is a <strong>{activeRoom.kind}</strong> room. Text chat
-                  below is live.
-                </p>
-              </section>
-            ) : null}
-          </div>
-
-          <ChatPanel
-            draft={draft}
-            messages={messages}
-            onDraftChange={setDraft}
-            onSubmit={submitMessage}
-          />
-        </section>
       </section>
-    </main>
+
+      <RightNav
+        backendHealthy={health?.ok ?? false}
+        chatSocketState={chatSocketState}
+        signalSocketState={signalSocketState}
+        statusNote={statusNote}
+        userId={userIdRef.current}
+        onOpenAuth={() => setAuthOpen(true)}
+      />
+
+      {authOpen && <AuthModal onClose={() => setAuthOpen(false)} />}
+    </div>
   );
 }
