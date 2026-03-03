@@ -1,5 +1,6 @@
 import type { ComponentProps, FormEvent } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { RoomSidebar } from "./RoomSidebar";
@@ -46,7 +47,8 @@ function renderSidebar(overrides?: Partial<ComponentProps<typeof RoomSidebar>>) 
 }
 
 describe("RoomSidebar", () => {
-  it("filters visible rooms by selected browse tab", () => {
+  it("filters visible rooms by selected browse tab", async () => {
+    const user = userEvent.setup();
     renderSidebar();
 
     expect(screen.getByText("General")).toBeVisible();
@@ -54,7 +56,7 @@ describe("RoomSidebar", () => {
     expect(screen.getAllByText("Stage").length).toBeGreaterThan(0);
     expect(screen.getByText("Live Launch")).toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: "Video" }));
+    await user.click(screen.getByRole("tab", { name: "Video" }));
 
     expect(screen.getByText("Video rooms")).toBeVisible();
     expect(screen.getByText("Cinema")).toBeVisible();
@@ -63,7 +65,8 @@ describe("RoomSidebar", () => {
     expect(screen.queryByText("Live Launch")).not.toBeInTheDocument();
   });
 
-  it("emits create-room callbacks from the form", () => {
+  it("emits create-room callbacks from the form", async () => {
+    const user = userEvent.setup();
     const onCreateRoom = vi.fn((event: FormEvent<HTMLFormElement>) =>
       event.preventDefault(),
     );
@@ -74,15 +77,21 @@ describe("RoomSidebar", () => {
       onCreateRoom,
       onRoomNameDraftChange,
       onRoomKindDraftChange,
-      roomNameDraft: "New Room",
+      roomNameDraft: "",
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "+ New room" }));
-    fireEvent.change(screen.getByPlaceholderText("Room name"), {
-      target: { value: "Streaming Lab" },
-    });
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "video" } });
-    fireEvent.submit(screen.getByRole("button", { name: "Create" }).closest("form")!);
+    await user.click(screen.getByRole("button", { name: "+ New room" }));
+
+    const input = screen.getByPlaceholderText("Room name");
+    fireEvent.change(input, { target: { value: "Streaming Lab" } });
+
+    // Interact with Select
+    await user.click(screen.getByRole("combobox"));
+    // Shadcn/Radix Select items are in a portal, so we use screen to find them
+    const option = await screen.findByRole("option", { name: "Video" });
+    await user.click(option);
+
+    await user.click(screen.getByRole("button", { name: "Create" }));
 
     expect(onRoomNameDraftChange).toHaveBeenCalledWith("Streaming Lab");
     expect(onRoomKindDraftChange).toHaveBeenCalledWith("video");

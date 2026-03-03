@@ -3,7 +3,7 @@ SHELL := /usr/bin/env bash
 FRONTEND_DIR := frontend
 BACKEND_DIR := backend
 
-.PHONY: run up down run-local backend frontend install lint format format-check test build check smoke
+.PHONY: run up down dev run-local backend frontend install lint format format-check test build check smoke
 
 run:
 	docker compose up --build
@@ -13,6 +13,20 @@ up:
 
 down:
 	docker compose down
+
+dev:
+	@set -euo pipefail; \
+	trap 'kill 0' EXIT INT TERM; \
+	echo "🚀 Starting development environment..."; \
+	(cd $(BACKEND_DIR) && zig build run) & \
+	echo "⏳ Waiting for backend to be healthy..."; \
+	for _ in {1..60}; do \
+		if curl -fsS http://localhost:8080/health >/dev/null 2>&1; then break; fi; \
+		sleep 1; \
+	done; \
+	echo "✅ Backend is healthy. Starting frontend..."; \
+	(cd $(FRONTEND_DIR) && bun run dev) & \
+	wait
 
 run-local:
 	@set -euo pipefail; \

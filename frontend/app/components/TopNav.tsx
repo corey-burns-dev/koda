@@ -1,3 +1,7 @@
+import Image from "next/image";
+import logo from "../assets/logo.jpeg";
+import { Button } from "@/components/ui/button";
+
 type TopNavProps = {
   onOpenAuth: () => void;
 };
@@ -5,18 +9,18 @@ type TopNavProps = {
 export function TopNav({ onOpenAuth }: TopNavProps) {
   return (
     <nav className="top-nav">
-      <div className="top-nav-brand">
-        <div className="brand-mark">P</div>
-        <span className="brand-name">Punch</span>
+      <div className="flex items-center gap-2">
+        <Image src={logo} alt="Punch Logo" width={32} height={32} className="rounded-lg" />
+        <span className="text-xl font-black tracking-tighter">Punch</span>
       </div>
 
-      <div className="top-nav-actions">
-        <button className="btn-ghost btn-sm" onClick={onOpenAuth} type="button">
+      <div className="top-nav-actions flex items-center gap-1">
+        <Button variant="ghost" size="sm" onClick={onOpenAuth} type="button">
           Log in
-        </button>
-        <button className="btn-sm" onClick={onOpenAuth} type="button">
+        </Button>
+        <Button size="sm" onClick={onOpenAuth} type="button">
           Sign up
-        </button>
+        </Button>
       </div>
     </nav>
   );

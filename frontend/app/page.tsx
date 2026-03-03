@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { MessageSquare, Hash, Video as VideoIcon, Radio } from "lucide-react";
 
 import { AuthModal } from "./components/AuthModal";
 import { ChatPanel } from "./components/ChatPanel";
@@ -17,6 +18,9 @@ import { StreamExperience } from "./components/StreamExperience";
 import { TopNav } from "./components/TopNav";
 import { VideoExperience } from "./components/VideoExperience";
 import { usePersistentUserId } from "./hooks/usePersistentUserId";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+
 import {
   ChatEvent,
   ChatMessage,
@@ -1068,7 +1072,7 @@ export default function Home() {
     videoParticipantIds.length + (videoJoined ? 1 : 0);
 
   return (
-    <div className="app-shell">
+    <div className="app-shell bg-[#081018] font-sans antialiased text-slate-100">
       <TopNav onOpenAuth={() => setAuthOpen(true)} />
 
       <RoomSidebar
@@ -1085,9 +1089,27 @@ export default function Home() {
       />
 
       <section className="main-panel">
-        <header className="room-head">
-          <h2>{activeRoom ? activeRoom.name : "No room selected"}</h2>
-          <span>{activeRoom ? activeRoom.kind : ""}</span>
+        <header className="flex flex-col gap-0.5 pb-1">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-black tracking-tighter">
+              {activeRoom ? activeRoom.name : "Pick a room"}
+            </h2>
+            {activeRoom && (
+              <Badge variant="outline" className="h-4 px-1.5 bg-primary/10 border-primary/20 text-primary text-[9px] font-bold uppercase tracking-widest">
+                {activeRoom.kind === 'text' && <MessageSquare size={10} className="mr-1" />}
+                {activeRoom.kind === 'video' && <VideoIcon size={10} className="mr-1" />}
+                {activeRoom.kind === 'stream' && <Radio size={10} className="mr-1" />}
+                {activeRoom.kind === 'voice' && <Hash size={10} className="mr-1" />}
+                {activeRoom.kind}
+              </Badge>
+            )}
+          </div>
+          <p className="text-[11px] text-muted-foreground font-medium">
+            {activeRoom 
+              ? `You are currently in ${activeRoom.name}. Enjoy the conversation.`
+              : "Select a room from the sidebar to start chatting or streaming."}
+          </p>
+          <Separator className="mt-2 bg-white/5" />
         </header>
 
         <div className="experience">
@@ -1143,12 +1165,19 @@ export default function Home() {
           {activeRoom &&
           activeRoom.kind !== "stream" &&
           activeRoom.kind !== "video" ? (
-            <section className="mode-panel">
-              <p className="muted">
-                This is a <strong>{activeRoom.kind}</strong> room. Text chat
-                below is live.
-              </p>
-            </section>
+            <div className="flex items-center justify-center p-12 rounded-2xl border border-dashed border-white/5 bg-white/5">
+              <div className="flex flex-col items-center gap-4 text-center max-w-sm">
+                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                  <MessageSquare size={32} className="text-primary" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="font-bold">Text Only Room</h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    This room is for text conversations only. You can see the message history and participate in the chat below.
+                  </p>
+                </div>
+              </div>
+            </div>
           ) : null}
         </div>
 

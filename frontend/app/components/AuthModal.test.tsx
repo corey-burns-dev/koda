@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { AuthModal } from "./AuthModal";
@@ -14,27 +15,29 @@ describe("AuthModal", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("switches to register mode", () => {
+  it("switches to register mode", async () => {
+    const user = userEvent.setup();
     render(<AuthModal onClose={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
+    await user.click(screen.getByRole("tab", { name: "Sign up" }));
 
     expect(
       screen.getByRole("heading", { name: "Create account" }),
     ).toBeVisible();
-    expect(screen.getByPlaceholderText("Username")).toBeVisible();
-    expect(screen.getByPlaceholderText("Confirm password")).toBeVisible();
+    expect(screen.getByLabelText("Username")).toBeVisible();
+    expect(screen.getByLabelText("Confirm Password")).toBeVisible();
   });
 
-  it("closes on overlay click and ignores modal-content click", () => {
+  it("closes on overlay click and ignores modal-content click", async () => {
+    const user = userEvent.setup();
     const onClose = vi.fn();
-    const { container } = render(<AuthModal onClose={onClose} />);
+    render(<AuthModal onClose={onClose} />);
 
-    fireEvent.click(screen.getByRole("heading", { name: "Welcome back" }));
+    await user.click(screen.getByRole("heading", { name: "Welcome back" }));
     expect(onClose).not.toHaveBeenCalled();
 
-    const overlay = container.querySelector(".modal-overlay");
+    const overlay = document.body.querySelector(".modal-overlay");
     expect(overlay).toBeTruthy();
-    fireEvent.click(overlay!);
+    await user.click(overlay!);
 
     expect(onClose).toHaveBeenCalledTimes(1);
   });
