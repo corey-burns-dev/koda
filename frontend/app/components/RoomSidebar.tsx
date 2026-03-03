@@ -12,14 +12,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-import { ROOM_KINDS, Room, RoomKind, StreamSession } from "../types";
-
-type BrowseTab = "all" | "live" | "video" | "text";
+import { ROOM_KINDS, Room, RoomKind, StreamSession, BrowseTab } from "../types";
 
 type RoomSidebarProps = {
   activeRoomId: string;
@@ -32,14 +29,8 @@ type RoomSidebarProps = {
   roomNameById: Map<string, string>;
   roomNameDraft: string;
   rooms: Room[];
+  tab: BrowseTab;
 };
-
-const TABS: { id: BrowseTab; label: string; icon: any }[] = [
-  { id: "all", label: "All", icon: Hash },
-  { id: "live", label: "Live", icon: Radio },
-  { id: "video", label: "Video", icon: Video },
-  { id: "text", label: "Text", icon: MessageSquare },
-];
 
 export function RoomSidebar({
   activeRoomId,
@@ -52,8 +43,8 @@ export function RoomSidebar({
   roomNameById,
   roomNameDraft,
   rooms,
+  tab,
 }: RoomSidebarProps) {
-  const [tab, setTab] = useState<BrowseTab>("all");
   const [createOpen, setCreateOpen] = useState(false);
 
   const liveRoomIds = new Set(liveStreams.map((s) => s.room_id));
@@ -69,22 +60,7 @@ export function RoomSidebar({
   const visibleStreams = tab === "all" || tab === "live" ? liveStreams : [];
 
   return (
-    <aside className="left-panel">
-      <Tabs value={tab} onValueChange={(v) => setTab(v as BrowseTab)} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 bg-black/40 p-1 h-auto">
-          {TABS.map(({ id, label, icon: Icon }) => (
-            <TabsTrigger
-              key={id}
-              value={id}
-              aria-label={label}
-              className="py-2 px-0 data-[state=active]:bg-primary data-[state=active]:text-white transition-all"
-            >
-              <Icon size={16} />
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-
+    <aside className="left-panel flex flex-col pt-0">
       <ScrollArea className="flex-1 -mx-2 px-2">
         <div className="flex flex-col gap-4 py-2">
           {/* Live streams */}

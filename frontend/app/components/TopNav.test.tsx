@@ -6,7 +6,7 @@ import { TopNav } from "./TopNav";
 describe("TopNav", () => {
   it("calls onOpenAuth from either auth action", () => {
     const onOpenAuth = vi.fn();
-    render(<TopNav onOpenAuth={onOpenAuth} />);
+    render(<TopNav onOpenAuth={onOpenAuth} tab="all" onTabChange={() => {}} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Log in" }));
     fireEvent.click(screen.getByRole("button", { name: "Sign up" }));

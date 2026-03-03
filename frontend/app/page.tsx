@@ -27,6 +27,7 @@ import {
   Health,
   Room,
   RoomKind,
+  BrowseTab,
   SignalPayload,
   StreamSession,
 } from "./types";
@@ -77,7 +78,7 @@ function isSignalPayload(value: unknown): value is SignalPayload {
 }
 
 export default function Home() {
-  const userIdRef = usePersistentUserId();
+  const { userId, setUserId } = usePersistentUserId();
 
   const chatSocketRef = useRef<WebSocket | null>(null);
   const signalSocketRef = useRef<WebSocket | null>(null);
@@ -142,6 +143,7 @@ export default function Home() {
 
   const [statusNote, setStatusNote] = useState("Ready");
   const [authOpen, setAuthOpen] = useState(false);
+  const [tab, setTab] = useState<BrowseTab>("all");
 
   const activeRoom = useMemo(
     () => rooms.find((room) => room.id === activeRoomId) ?? null,
@@ -177,19 +179,19 @@ export default function Home() {
     setStreamViewerIds(Array.from(next.values()));
   }
 
-  function addStreamViewer(userId: string): void {
-    if (!userId || userId === userIdRef.current) {
+  function addStreamViewer(userIdParam: string): void {
+    if (!userIdParam || userIdParam === userId) {
       return;
     }
 
     const next = new Set(streamViewerIdsRef.current);
-    next.add(userId);
+    next.add(userIdParam);
     setStreamViewers(next);
   }
 
-  function removeStreamViewer(userId: string): void {
+  function removeStreamViewer(userIdParam: string): void {
     const next = new Set(streamViewerIdsRef.current);
-    if (!next.delete(userId)) {
+    if (!next.delete(userIdParam)) {
       return;
     }
     setStreamViewers(next);
@@ -204,19 +206,19 @@ export default function Home() {
     setVideoParticipantIds(Array.from(next.values()));
   }
 
-  function addVideoParticipant(userId: string): void {
-    if (!userId || userId === userIdRef.current) {
+  function addVideoParticipant(userIdParam: string): void {
+    if (!userIdParam || userIdParam === userId) {
       return;
     }
 
     const next = new Set(videoParticipantIdsRef.current);
-    next.add(userId);
+    next.add(userIdParam);
     setVideoParticipants(next);
   }
 
-  function removeVideoParticipant(userId: string): void {
+  function removeVideoParticipant(userIdParam: string): void {
     const next = new Set(videoParticipantIdsRef.current);
-    if (!next.delete(userId)) {
+    if (!next.delete(userIdParam)) {
       return;
     }
     setVideoParticipants(next);
@@ -497,14 +499,14 @@ export default function Home() {
       setStreamRemoteMedia(null);
       setStreamLocalMedia(media);
       setStreamMode("hosting");
-      setKnownStreamHostId(userIdRef.current);
+      setKnownStreamHostId(userId);
 
       const response = await fetch(`${HTTP_BASE}/api/streams`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           room_id: activeRoom.id,
-          user_id: userIdRef.current,
+          user_id: userId,
           title: streamTitleDraft.trim() || "Live on Punch",
         }),
       });
@@ -678,7 +680,7 @@ export default function Home() {
     }
 
     const socket = new WebSocket(
-      `${WS_BASE}/ws/chat?room_id=${encodeURIComponent(activeRoomId)}&user_id=${encodeURIComponent(userIdRef.current)}`,
+      `${WS_BASE}/ws/chat?room_id=${encodeURIComponent(activeRoomId)}&user_id=${encodeURIComponent(userId)}`,
     );
 
     socket.onopen = () => setChatSocketState("connected");
@@ -709,7 +711,7 @@ export default function Home() {
       }
       socket.close();
     };
-  }, [activeRoomId, userIdRef]);
+  }, [activeRoomId, userId]);
 
   async function handleStreamSignal(
     fromUserId: string,
@@ -836,7 +838,7 @@ export default function Home() {
 
       addVideoParticipant(fromUserId);
 
-      const shouldInitiateOffer = userIdRef.current < fromUserId;
+      const shouldInitiateOffer = userId < fromUserId;
       if (shouldInitiateOffer) {
         await createVideoOfferForParticipant(fromUserId);
       }
@@ -897,7 +899,7 @@ export default function Home() {
     }
 
     const socket = new WebSocket(
-      `${WS_BASE}/ws/signal?room_id=${encodeURIComponent(activeRoomId)}&user_id=${encodeURIComponent(userIdRef.current)}`,
+      `${WS_BASE}/ws/signal?room_id=${encodeURIComponent(activeRoomId)}&user_id=${encodeURIComponent(userId)}`,
     );
 
     socket.onopen = () => {
@@ -950,7 +952,7 @@ export default function Home() {
 
         if (
           parsedPayload.target_user_id &&
-          parsedPayload.target_user_id !== userIdRef.current
+          parsedPayload.target_user_id !== userId
         ) {
           return;
         }
@@ -980,7 +982,7 @@ export default function Home() {
       socket.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRoomId, activeRoom?.kind]);
+  }, [activeRoomId, activeRoom?.kind, userId]);
 
   useEffect(() => {
     if (streamLocalVideoRef.current) {
@@ -1073,7 +1075,11 @@ export default function Home() {
 
   return (
     <div className="app-shell bg-[#081018] font-sans antialiased text-slate-100">
-      <TopNav onOpenAuth={() => setAuthOpen(true)} />
+      <TopNav
+        onOpenAuth={() => setAuthOpen(true)}
+        onTabChange={setTab}
+        tab={tab}
+      />
 
       <RoomSidebar
         activeRoomId={activeRoomId}
@@ -1086,6 +1092,7 @@ export default function Home() {
         roomNameById={roomNameById}
         roomNameDraft={roomNameDraft}
         rooms={rooms}
+        tab={tab}
       />
 
       <section className="main-panel">
@@ -1112,8 +1119,8 @@ export default function Home() {
           <Separator className="mt-2 bg-white/5" />
         </header>
 
-        <div className="experience">
-          {activeRoom?.kind === "stream" ? (
+        {activeRoom?.kind === "stream" ? (
+          <div className="shrink-0">
             <StreamExperience
               knownStreamHostId={knownStreamHostId}
               onFindStream={() =>
@@ -1142,9 +1149,11 @@ export default function Home() {
               streamTitleDraft={streamTitleDraft}
               streamViewerCount={streamViewerIds.length}
             />
-          ) : null}
+          </div>
+        ) : null}
 
-          {activeRoom?.kind === "video" ? (
+        {activeRoom?.kind === "video" ? (
+          <div className="shrink-0">
             <VideoExperience
               getRemoteVideoStream={(remoteUserId) =>
                 videoRemoteStreamsRef.current.get(remoteUserId) ?? null
@@ -1160,26 +1169,8 @@ export default function Home() {
               videoParticipantCount={videoParticipantCount}
               videoRemoteUserIds={videoRemoteUserIds}
             />
-          ) : null}
-
-          {activeRoom &&
-          activeRoom.kind !== "stream" &&
-          activeRoom.kind !== "video" ? (
-            <div className="flex items-center justify-center p-12 rounded-2xl border border-dashed border-white/5 bg-white/5">
-              <div className="flex flex-col items-center gap-4 text-center max-w-sm">
-                <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
-                  <MessageSquare size={32} className="text-primary" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="font-bold">Text Only Room</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    This room is for text conversations only. You can see the message history and participate in the chat below.
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
         <ChatPanel
           draft={draft}
@@ -1194,11 +1185,19 @@ export default function Home() {
         chatSocketState={chatSocketState}
         signalSocketState={signalSocketState}
         statusNote={statusNote}
-        userId={userIdRef.current}
+        userId={userId}
         onOpenAuth={() => setAuthOpen(true)}
       />
 
-      {authOpen && <AuthModal onClose={() => setAuthOpen(false)} />}
+      {authOpen && (
+        <AuthModal 
+          onClose={() => setAuthOpen(false)} 
+          onSuccess={(user) => {
+            setUserId(user.id);
+            setStatusNote(`Logged in as ${user.username}`);
+          }}
+        />
+      )}
     </div>
   );
 }

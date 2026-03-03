@@ -1,5 +1,7 @@
 export type RoomKind = "text" | "voice" | "video" | "stream";
 
+export type BrowseTab = "all" | "live" | "video" | "text";
+
 export type Health = {
   ok: boolean;
   service: string;

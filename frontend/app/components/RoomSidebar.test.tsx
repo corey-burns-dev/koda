@@ -41,6 +41,35 @@ function renderSidebar(overrides?: Partial<ComponentProps<typeof RoomSidebar>>) 
       ])}
       roomNameDraft=""
       rooms={rooms}
+      tab="all"
+      {...overrides}
+    />,
+  );
+}
+
+function rerenderSidebar(
+  rerender: (ui: React.ReactElement) => void,
+  overrides?: Partial<ComponentProps<typeof RoomSidebar>>,
+) {
+  rerender(
+    <RoomSidebar
+      activeRoomId="room-text"
+      liveStreams={liveStreams}
+      onCreateRoom={(event: FormEvent<HTMLFormElement>) =>
+        event.preventDefault()
+      }
+      onRoomKindDraftChange={() => {}}
+      onRoomNameDraftChange={() => {}}
+      onSelectRoom={() => {}}
+      roomKindDraft="stream"
+      roomNameById={new Map([
+        ["room-text", "General"],
+        ["room-video", "Cinema"],
+        ["room-stream", "Stage"],
+      ])}
+      roomNameDraft=""
+      rooms={rooms}
+      tab="all"
       {...overrides}
     />,
   );
@@ -48,15 +77,14 @@ function renderSidebar(overrides?: Partial<ComponentProps<typeof RoomSidebar>>) 
 
 describe("RoomSidebar", () => {
   it("filters visible rooms by selected browse tab", async () => {
-    const user = userEvent.setup();
-    renderSidebar();
+    const { rerender } = renderSidebar({ tab: "all" });
 
     expect(screen.getByText("General")).toBeVisible();
     expect(screen.getByText("Cinema")).toBeVisible();
     expect(screen.getAllByText("Stage").length).toBeGreaterThan(0);
     expect(screen.getByText("Live Launch")).toBeVisible();
 
-    await user.click(screen.getByRole("tab", { name: "Video" }));
+    rerenderSidebar(rerender, { tab: "video" });
 
     expect(screen.getByText("Video rooms")).toBeVisible();
     expect(screen.getByText("Cinema")).toBeVisible();

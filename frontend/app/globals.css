@@ -96,21 +96,21 @@
 }
 
 .top-nav {
-  grid-column: 1 / -1;
+  grid-column: 2 / -1;
   grid-row: 1;
   @apply flex items-center justify-between px-4 border-b border-white/5 bg-background/80 backdrop-blur-xl z-20;
 }
 
 .left-panel {
   grid-column: 1;
-  grid-row: 2;
+  grid-row: 1 / -1;
   @apply overflow-y-auto border-r border-white/5 p-3 flex flex-col gap-3 bg-background/40;
 }
 
 .main-panel {
   grid-column: 2;
   grid-row: 2;
-  @apply overflow-y-auto p-4 grid grid-rows-[auto_1fr_auto] gap-4;
+  @apply flex flex-col overflow-hidden p-4 gap-3 border-t border-white/5;
 }
 
 .right-panel {

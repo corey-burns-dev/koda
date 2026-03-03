@@ -1,19 +1,24 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 
 export function usePersistentUserId(storageKey = "punch.user_id") {
-  const userIdRef = useRef("web-user");
+  const [userId, setUserId] = useState<string>("web-user");
 
   useEffect(() => {
     const existing = window.localStorage.getItem(storageKey);
     if (existing) {
-      userIdRef.current = existing;
+      setUserId(existing);
       return;
     }
 
     const generated = `user-${Math.random().toString(36).slice(2, 10)}`;
     window.localStorage.setItem(storageKey, generated);
-    userIdRef.current = generated;
+    setUserId(generated);
   }, [storageKey]);
 
-  return userIdRef;
+  const updateUserId = (newId: string) => {
+    window.localStorage.setItem(storageKey, newId);
+    setUserId(newId);
+  };
+
+  return { userId, setUserId: updateUserId };
 }

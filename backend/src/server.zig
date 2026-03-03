@@ -111,7 +111,7 @@ pub const PunchServer = struct {
                 .none => {
                     self.serveHttp(&request) catch |err| {
                         std.log.err("route error {s} {s}: {s}", .{ @tagName(request.head.method), request.head.target, @errorName(err) });
-                        self.respondText(&request, .internal_server_error, "internal server error") catch {};
+                        self.respondRouteError(&request, err) catch {};
                         return;
                     };
                 },
@@ -194,7 +194,92 @@ pub const PunchServer = struct {
             }
         }
 
+        if (std.mem.eql(u8, target.path, "/api/auth/register") and request.head.method == .POST) {
+            const payload = try self.handleRegister(request);
+            defer self.allocator.free(payload);
+            return self.respondJson(request, .created, payload);
+        }
+
+        if (std.mem.eql(u8, target.path, "/api/auth/login") and request.head.method == .POST) {
+            const payload = try self.handleLogin(request);
+            defer self.allocator.free(payload);
+            return self.respondJson(request, .ok, payload);
+        }
+
         return self.respondText(request, .not_found, "not found");
+    }
+
+    fn handleRegister(self: *PunchServer, request: *http.Server.Request) ![]u8 {
+        const body = try self.readBody(request, 16 * 1024);
+        defer self.allocator.free(body);
+
+        const UserRegister = struct {
+            username: []const u8,
+            email: []const u8,
+            password: []const u8,
+        };
+
+        var parsed = std.json.parseFromSlice(UserRegister, self.allocator, body, .{ .ignore_unknown_fields = true }) catch return error.InvalidJson;
+        defer parsed.deinit();
+
+        const username = std.mem.trim(u8, parsed.value.username, " \t\r\n");
+        const email = std.mem.trim(u8, parsed.value.email, " \t\r\n");
+        const password = std.mem.trim(u8, parsed.value.password, " \t\r\n");
+
+        if (username.len == 0 or email.len == 0 or password.len == 0) return error.InvalidRegistration;
+
+        self.state_mutex.lock();
+        defer self.state_mutex.unlock();
+
+        var users = self.app.userService();
+        const user = try users.register(username, email, password);
+        return try self.buildUserJson(user);
+    }
+
+    fn handleLogin(self: *PunchServer, request: *http.Server.Request) ![]u8 {
+        const body = try self.readBody(request, 16 * 1024);
+        defer self.allocator.free(body);
+
+        const UserLogin = struct {
+            email: []const u8,
+            password: []const u8,
+        };
+
+        var parsed = std.json.parseFromSlice(UserLogin, self.allocator, body, .{ .ignore_unknown_fields = true }) catch return error.InvalidJson;
+        defer parsed.deinit();
+
+        const email = std.mem.trim(u8, parsed.value.email, " \t\r\n");
+        const password = std.mem.trim(u8, parsed.value.password, " \t\r\n");
+
+        if (email.len == 0 or password.len == 0) return error.InvalidLogin;
+
+        self.state_mutex.lock();
+        defer self.state_mutex.unlock();
+
+        var users = self.app.userService();
+        const user = try users.login(email, password);
+        return try self.buildUserJson(user);
+    }
+
+    fn buildUserJson(self: *PunchServer, user: store.User) ![]u8 {
+        var out: std.ArrayList(u8) = .empty;
+        errdefer out.deinit(self.allocator);
+
+        var writer = out.writer(self.allocator);
+        try self.writeUserObject(&writer, user);
+        return try out.toOwnedSlice(self.allocator);
+    }
+
+    fn writeUserObject(self: *PunchServer, writer: anytype, user: store.User) !void {
+        _ = self;
+        try writer.writeByte('{');
+        try writer.writeAll("\"id\":");
+        try writeJsonString(writer, user.id);
+        try writer.writeAll(",\"username\":");
+        try writeJsonString(writer, user.username);
+        try writer.writeAll(",\"email\":");
+        try writeJsonString(writer, user.email);
+        try writer.writeByte('}');
     }
 
     fn handleCreateRoom(self: *PunchServer, request: *http.Server.Request) ![]u8 {
@@ -669,6 +754,20 @@ pub const PunchServer = struct {
             .{ .name = "Access-Control-Allow-Methods", .value = "GET,POST,OPTIONS" },
         };
         try request.respond("", .{ .status = .no_content, .extra_headers = &headers });
+    }
+
+    fn respondRouteError(self: *PunchServer, request: *http.Server.Request, err: anyerror) !void {
+        return switch (err) {
+            error.InvalidRegistration => self.respondText(request, .bad_request, "username, email, and password are required"),
+            error.InvalidLogin => self.respondText(request, .bad_request, "email and password are required"),
+            error.InvalidJson => self.respondText(request, .bad_request, "invalid json payload"),
+            error.UsernameTaken => self.respondText(request, .conflict, "username already taken"),
+            error.EmailTaken => self.respondText(request, .conflict, "email already registered"),
+            error.InvalidPassword, error.UserNotFound => self.respondText(request, .unauthorized, "invalid email or password"),
+            error.MissingContentLength => self.respondText(request, .length_required, "content-length header is required"),
+            error.BodyTooLarge => self.respondText(request, .payload_too_large, "request body too large"),
+            else => self.respondText(request, .internal_server_error, "internal server error"),
+        };
     }
 };
 

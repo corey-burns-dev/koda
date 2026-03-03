@@ -15,7 +15,7 @@ describe("usePersistentUserId", () => {
     const { result } = renderHook(() => usePersistentUserId());
 
     await waitFor(() => {
-      expect(result.current.current).toBe("user-existing");
+      expect(result.current.userId).toBe("user-existing");
     });
   });
 
@@ -25,11 +25,11 @@ describe("usePersistentUserId", () => {
     const { result } = renderHook(() => usePersistentUserId("custom.user_id"));
 
     await waitFor(() => {
-      expect(result.current.current).toMatch(/^user-[a-z0-9]{8}$/);
+      expect(result.current.userId).toMatch(/^user-[a-z0-9]{8}$/);
     });
 
     expect(window.localStorage.getItem("custom.user_id")).toBe(
-      result.current.current,
+      result.current.userId,
     );
   });
 });
