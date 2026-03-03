@@ -1,0 +1,8 @@
+.git
+.gitignore
+node_modules
+frontend/node_modules
+frontend/.next
+backend/.zig-cache
+backend/zig-out
+**/.DS_Store

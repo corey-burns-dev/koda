@@ -1,0 +1,19 @@
+# Bun/Node
+node_modules/
+bun.lockb
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Zig
+backend/.zig-cache/
+backend/zig-out/
+
+# Env
+.env
+.env.*
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
