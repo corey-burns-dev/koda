@@ -5,8 +5,8 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
-    var punch_server = try server.PunchServer.init(gpa.allocator());
-    defer punch_server.deinit();
+    var koda_server = try server.KodaServer.init(gpa.allocator());
+    defer koda_server.deinit();
 
-    try punch_server.run();
+    try koda_server.run();
 }

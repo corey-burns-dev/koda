@@ -7,6 +7,13 @@ export type Health = {
   service: string;
 };
 
+export type AuthUser = {
+  id: string;
+  username: string;
+  email: string;
+  token: string;
+};
+
 export type Room = {
   id: string;
   name: string;
@@ -25,6 +32,7 @@ export type ChatMessage = {
   id: string;
   room_id: string;
   user_id: string;
+  username?: string;
   body: string;
   sent_at_unix_ms: number;
 };

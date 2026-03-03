@@ -6,7 +6,7 @@ const config_mod = @import("config.zig");
 const store = @import("store.zig");
 const types = @import("types.zig");
 
-pub const PunchServer = struct {
+pub const KodaServer = struct {
     allocator: std.mem.Allocator,
     config: config_mod.Config,
     app: app_mod.App,
@@ -15,14 +15,14 @@ pub const PunchServer = struct {
 
     const default_room_id = "room-1";
 
-    pub fn init(allocator: std.mem.Allocator) !PunchServer {
+    pub fn init(allocator: std.mem.Allocator) !KodaServer {
         var cfg = try config_mod.load(allocator);
         errdefer cfg.deinit(allocator);
 
         var app = try app_mod.App.init(allocator);
         errdefer app.deinit();
 
-        var server = PunchServer{
+        var server = KodaServer{
             .allocator = allocator,
             .config = cfg,
             .app = app,
@@ -32,17 +32,17 @@ pub const PunchServer = struct {
         return server;
     }
 
-    pub fn deinit(self: *PunchServer) void {
+    pub fn deinit(self: *KodaServer) void {
         self.app.deinit();
         self.config.deinit(self.allocator);
     }
 
-    pub fn run(self: *PunchServer) !void {
+    pub fn run(self: *KodaServer) !void {
         const address = try std.net.Address.parseIp(self.config.host, self.config.port);
         var tcp = try address.listen(.{ .reuse_address = true });
         defer tcp.deinit();
 
-        std.debug.print("Punch backend listening at http://{f}\n", .{tcp.listen_address});
+        std.debug.print("Koda backend listening at http://{f}\n", .{tcp.listen_address});
 
         while (true) {
             const connection = tcp.accept() catch |err| {
@@ -58,7 +58,7 @@ pub const PunchServer = struct {
         }
     }
 
-    fn seedData(self: *PunchServer) !void {
+    fn seedData(self: *KodaServer) !void {
         self.state_mutex.lock();
         defer self.state_mutex.unlock();
 
@@ -69,16 +69,16 @@ pub const PunchServer = struct {
         const stage = try rooms.createRoom("stage", .stream);
 
         var chat = self.app.chatService();
-        _ = try chat.sendMessage(lobby.id, "system", "Punch backend is online.");
+        _ = try chat.sendMessage(lobby.id, "system", "Koda backend is online.");
 
         var streams = self.app.streamService();
-        _ = try streams.startStream(stage.id, "system", "Welcome to Punch");
+        _ = try streams.startStream(stage.id, "system", "Welcome to Koda");
 
         var voice = self.app.voiceService();
         try voice.joinVoice(stage.id, "system");
     }
 
-    fn acceptConnection(self: *PunchServer, connection: std.net.Server.Connection) void {
+    fn acceptConnection(self: *KodaServer, connection: std.net.Server.Connection) void {
         defer connection.stream.close();
 
         var send_buffer: [8192]u8 = undefined;
@@ -119,7 +119,7 @@ pub const PunchServer = struct {
         }
     }
 
-    fn serveHttp(self: *PunchServer, request: *http.Server.Request) !void {
+    fn serveHttp(self: *KodaServer, request: *http.Server.Request) !void {
         const target = splitTarget(request.head.target);
 
         if (request.head.method == .OPTIONS) {
@@ -127,11 +127,11 @@ pub const PunchServer = struct {
         }
 
         if (std.mem.eql(u8, target.path, "/") and request.head.method == .GET) {
-            return self.respondText(request, .ok, "Punch backend\n");
+            return self.respondText(request, .ok, "Koda backend\n");
         }
 
         if (std.mem.eql(u8, target.path, "/health") and request.head.method == .GET) {
-            return self.respondJson(request, .ok, "{\"ok\":true,\"service\":\"punch-backend\"}");
+            return self.respondJson(request, .ok, "{\"ok\":true,\"service\":\"koda-backend\"}");
         }
 
         if (std.mem.eql(u8, target.path, "/api/rooms")) {
@@ -209,7 +209,7 @@ pub const PunchServer = struct {
         return self.respondText(request, .not_found, "not found");
     }
 
-    fn handleRegister(self: *PunchServer, request: *http.Server.Request) ![]u8 {
+    fn handleRegister(self: *KodaServer, request: *http.Server.Request) ![]u8 {
         const body = try self.readBody(request, 16 * 1024);
         defer self.allocator.free(body);
 
@@ -233,10 +233,11 @@ pub const PunchServer = struct {
 
         var users = self.app.userService();
         const user = try users.register(username, email, password);
-        return try self.buildUserJson(user);
+        const token = try self.createSessionLocked(user.id);
+        return try self.buildUserJson(user, token);
     }
 
-    fn handleLogin(self: *PunchServer, request: *http.Server.Request) ![]u8 {
+    fn handleLogin(self: *KodaServer, request: *http.Server.Request) ![]u8 {
         const body = try self.readBody(request, 16 * 1024);
         defer self.allocator.free(body);
 
@@ -258,19 +259,20 @@ pub const PunchServer = struct {
 
         var users = self.app.userService();
         const user = try users.login(email, password);
-        return try self.buildUserJson(user);
+        const token = try self.createSessionLocked(user.id);
+        return try self.buildUserJson(user, token);
     }
 
-    fn buildUserJson(self: *PunchServer, user: store.User) ![]u8 {
+    fn buildUserJson(self: *KodaServer, user: store.User, token: []const u8) ![]u8 {
         var out: std.ArrayList(u8) = .empty;
         errdefer out.deinit(self.allocator);
 
         var writer = out.writer(self.allocator);
-        try self.writeUserObject(&writer, user);
+        try self.writeUserObject(&writer, user, token);
         return try out.toOwnedSlice(self.allocator);
     }
 
-    fn writeUserObject(self: *PunchServer, writer: anytype, user: store.User) !void {
+    fn writeUserObject(self: *KodaServer, writer: anytype, user: store.User, token: []const u8) !void {
         _ = self;
         try writer.writeByte('{');
         try writer.writeAll("\"id\":");
@@ -279,10 +281,12 @@ pub const PunchServer = struct {
         try writeJsonString(writer, user.username);
         try writer.writeAll(",\"email\":");
         try writeJsonString(writer, user.email);
+        try writer.writeAll(",\"token\":");
+        try writeJsonString(writer, token);
         try writer.writeByte('}');
     }
 
-    fn handleCreateRoom(self: *PunchServer, request: *http.Server.Request) ![]u8 {
+    fn handleCreateRoom(self: *KodaServer, request: *http.Server.Request) ![]u8 {
         const body = try self.readBody(request, 16 * 1024);
         defer self.allocator.free(body);
 
@@ -307,13 +311,22 @@ pub const PunchServer = struct {
         return try self.buildRoomJson(room);
     }
 
-    fn handleCreateMessage(self: *PunchServer, request: *http.Server.Request) ![]u8 {
+    fn handleCreateMessage(self: *KodaServer, request: *http.Server.Request) ![]u8 {
+        const token = extractBearerToken(request) orelse return error.InvalidToken;
+
+        self.state_mutex.lock();
+        const maybe_uid = self.validateTokenLocked(token);
+        const auth_user_id = if (maybe_uid) |uid| try self.allocator.dupe(u8, uid) else null;
+        self.state_mutex.unlock();
+
+        const user_id = auth_user_id orelse return error.InvalidToken;
+        defer self.allocator.free(user_id);
+
         const body = try self.readBody(request, 64 * 1024);
         defer self.allocator.free(body);
 
         const MessageCreate = struct {
             room_id: []const u8,
-            user_id: []const u8,
             body: []const u8,
         };
 
@@ -321,10 +334,9 @@ pub const PunchServer = struct {
         defer parsed.deinit();
 
         const room_id = std.mem.trim(u8, parsed.value.room_id, " \t\r\n");
-        const user_id = std.mem.trim(u8, parsed.value.user_id, " \t\r\n");
         const message_body = std.mem.trim(u8, parsed.value.body, " \t\r\n");
 
-        if (room_id.len == 0 or user_id.len == 0 or message_body.len == 0) {
+        if (room_id.len == 0 or message_body.len == 0) {
             return error.InvalidMessage;
         }
 
@@ -332,13 +344,22 @@ pub const PunchServer = struct {
         return try self.buildChatEventJson(message);
     }
 
-    fn handleStartStream(self: *PunchServer, request: *http.Server.Request) ![]u8 {
+    fn handleStartStream(self: *KodaServer, request: *http.Server.Request) ![]u8 {
+        const token = extractBearerToken(request) orelse return error.InvalidToken;
+
+        self.state_mutex.lock();
+        const maybe_uid = self.validateTokenLocked(token);
+        const auth_user_id = if (maybe_uid) |uid| try self.allocator.dupe(u8, uid) else null;
+        self.state_mutex.unlock();
+
+        const user_id = auth_user_id orelse return error.InvalidToken;
+        defer self.allocator.free(user_id);
+
         const body = try self.readBody(request, 64 * 1024);
         defer self.allocator.free(body);
 
         const StreamStart = struct {
             room_id: []const u8,
-            user_id: []const u8,
             title: []const u8,
         };
 
@@ -346,10 +367,9 @@ pub const PunchServer = struct {
         defer parsed.deinit();
 
         const room_id = std.mem.trim(u8, parsed.value.room_id, " \t\r\n");
-        const user_id = std.mem.trim(u8, parsed.value.user_id, " \t\r\n");
         const title = std.mem.trim(u8, parsed.value.title, " \t\r\n");
 
-        if (room_id.len == 0 or user_id.len == 0 or title.len == 0) {
+        if (room_id.len == 0 or title.len == 0) {
             return error.InvalidStreamStart;
         }
 
@@ -362,7 +382,15 @@ pub const PunchServer = struct {
         return try self.buildStreamJson(stream);
     }
 
-    fn handleStopStream(self: *PunchServer, request: *http.Server.Request) ![]u8 {
+    fn handleStopStream(self: *KodaServer, request: *http.Server.Request) ![]u8 {
+        const token = extractBearerToken(request) orelse return error.InvalidToken;
+
+        self.state_mutex.lock();
+        const valid = self.validateTokenLocked(token) != null;
+        self.state_mutex.unlock();
+
+        if (!valid) return error.InvalidToken;
+
         const body = try self.readBody(request, 32 * 1024);
         defer self.allocator.free(body);
 
@@ -392,7 +420,7 @@ pub const PunchServer = struct {
         return error.StreamNotFound;
     }
 
-    fn readBody(self: *PunchServer, request: *http.Server.Request, max_len: usize) ![]u8 {
+    fn readBody(self: *KodaServer, request: *http.Server.Request, max_len: usize) ![]u8 {
         const len_u64 = request.head.content_length orelse return error.MissingContentLength;
         const len: usize = std.math.cast(usize, len_u64) orelse return error.BodyTooLarge;
         if (len > max_len) return error.BodyTooLarge;
@@ -402,7 +430,7 @@ pub const PunchServer = struct {
         return try reader.readAlloc(self.allocator, len);
     }
 
-    fn handleWebSocketUpgrade(self: *PunchServer, request: *http.Server.Request, opt_key: ?[]const u8) !void {
+    fn handleWebSocketUpgrade(self: *KodaServer, request: *http.Server.Request, opt_key: ?[]const u8) !void {
         const target = splitTarget(request.head.target);
         const is_chat = std.mem.eql(u8, target.path, "/ws/chat");
         const is_signal = std.mem.eql(u8, target.path, "/ws/signal");
@@ -413,12 +441,30 @@ pub const PunchServer = struct {
         const key = opt_key orelse return error.MissingWebSocketKey;
 
         const room_param = queryValue(target.query, "room_id") orelse default_room_id;
-        const user_param = queryValue(target.query, "user_id") orelse "guest";
+        const token_param = queryValue(target.query, "token") orelse "";
 
         const room_id = try self.allocator.dupe(u8, room_param);
         defer self.allocator.free(room_id);
 
-        const user_id = try self.allocator.dupe(u8, user_param);
+        // Resolve the user_id from the session token.
+        // Chat requires a valid token; signal falls back to "guest" for unauthenticated viewers.
+        const user_id = blk: {
+            if (token_param.len > 0) {
+                self.state_mutex.lock();
+                const maybe_uid = self.validateTokenLocked(token_param);
+                const owned = if (maybe_uid) |uid| try self.allocator.dupe(u8, uid) else null;
+                self.state_mutex.unlock();
+
+                if (owned) |uid| break :blk uid;
+
+                if (is_chat) {
+                    return self.respondText(request, .unauthorized, "invalid or expired session");
+                }
+            } else if (is_chat) {
+                return self.respondText(request, .unauthorized, "login required for chat");
+            }
+            break :blk try self.allocator.dupe(u8, "guest");
+        };
         defer self.allocator.free(user_id);
 
         const headers = [_]http.Header{
@@ -439,7 +485,7 @@ pub const PunchServer = struct {
         try self.serveSignalSocket(&socket, room_id, user_id);
     }
 
-    fn serveChatSocket(self: *PunchServer, socket: *http.Server.WebSocket, room_id: []const u8, user_id: []const u8) !void {
+    fn serveChatSocket(self: *KodaServer, socket: *http.Server.WebSocket, room_id: []const u8, user_id: []const u8) !void {
         var closed = std.atomic.Value(bool).init(false);
         var ctx = WebSocketRecvContext{
             .server = self,
@@ -490,7 +536,7 @@ pub const PunchServer = struct {
         }
     }
 
-    fn serveSignalSocket(self: *PunchServer, socket: *http.Server.WebSocket, room_id: []const u8, user_id: []const u8) !void {
+    fn serveSignalSocket(self: *KodaServer, socket: *http.Server.WebSocket, room_id: []const u8, user_id: []const u8) !void {
         var closed = std.atomic.Value(bool).init(false);
         var ctx = SignalWebSocketRecvContext{
             .server = self,
@@ -542,7 +588,7 @@ pub const PunchServer = struct {
         }
     }
 
-    fn appendMessage(self: *PunchServer, room_id: []const u8, user_id: []const u8, body: []const u8) !store.Message {
+    fn appendMessage(self: *KodaServer, room_id: []const u8, user_id: []const u8, body: []const u8) !store.Message {
         self.state_mutex.lock();
         defer self.state_mutex.unlock();
 
@@ -552,7 +598,7 @@ pub const PunchServer = struct {
         return message;
     }
 
-    fn appendSignalEvent(self: *PunchServer, room_id: []const u8, user_id: []const u8, payload: []const u8) !store.SignalEvent {
+    fn appendSignalEvent(self: *KodaServer, room_id: []const u8, user_id: []const u8, payload: []const u8) !store.SignalEvent {
         self.state_mutex.lock();
         defer self.state_mutex.unlock();
 
@@ -569,7 +615,7 @@ pub const PunchServer = struct {
         return event;
     }
 
-    fn buildRoomsJson(self: *PunchServer) ![]u8 {
+    fn buildRoomsJson(self: *KodaServer) ![]u8 {
         var out: std.ArrayList(u8) = .empty;
         errdefer out.deinit(self.allocator);
 
@@ -588,7 +634,7 @@ pub const PunchServer = struct {
         return try out.toOwnedSlice(self.allocator);
     }
 
-    fn buildMessagesJson(self: *PunchServer, room_id: []const u8) ![]u8 {
+    fn buildMessagesJson(self: *KodaServer, room_id: []const u8) ![]u8 {
         var out: std.ArrayList(u8) = .empty;
         errdefer out.deinit(self.allocator);
 
@@ -603,14 +649,14 @@ pub const PunchServer = struct {
             if (!std.mem.eql(u8, message.room_id, room_id)) continue;
             if (!first) try writer.writeByte(',');
             first = false;
-            try self.writeMessageObject(&writer, message);
+            try self.writeMessageObjectLocked(&writer, message);
         }
         try writer.writeByte(']');
 
         return try out.toOwnedSlice(self.allocator);
     }
 
-    fn buildStreamsJson(self: *PunchServer) ![]u8 {
+    fn buildStreamsJson(self: *KodaServer) ![]u8 {
         var out: std.ArrayList(u8) = .empty;
         errdefer out.deinit(self.allocator);
 
@@ -629,7 +675,7 @@ pub const PunchServer = struct {
         return try out.toOwnedSlice(self.allocator);
     }
 
-    fn buildRoomJson(self: *PunchServer, room: store.Room) ![]u8 {
+    fn buildRoomJson(self: *KodaServer, room: store.Room) ![]u8 {
         var out: std.ArrayList(u8) = .empty;
         errdefer out.deinit(self.allocator);
 
@@ -638,19 +684,21 @@ pub const PunchServer = struct {
         return try out.toOwnedSlice(self.allocator);
     }
 
-    fn buildChatEventJson(self: *PunchServer, message: store.Message) ![]u8 {
+    fn buildChatEventJson(self: *KodaServer, message: store.Message) ![]u8 {
         var out: std.ArrayList(u8) = .empty;
         errdefer out.deinit(self.allocator);
 
         var writer = out.writer(self.allocator);
+        self.state_mutex.lock();
+        defer self.state_mutex.unlock();
         try writer.writeAll("{\"type\":\"chat.message\",\"message\":");
-        try self.writeMessageObject(&writer, message);
+        try self.writeMessageObjectLocked(&writer, message);
         try writer.writeByte('}');
 
         return try out.toOwnedSlice(self.allocator);
     }
 
-    fn buildStreamJson(self: *PunchServer, stream: store.StreamSession) ![]u8 {
+    fn buildStreamJson(self: *KodaServer, stream: store.StreamSession) ![]u8 {
         var out: std.ArrayList(u8) = .empty;
         errdefer out.deinit(self.allocator);
 
@@ -659,7 +707,7 @@ pub const PunchServer = struct {
         return try out.toOwnedSlice(self.allocator);
     }
 
-    fn buildSignalEventJson(self: *PunchServer, signal: store.SignalEvent) ![]u8 {
+    fn buildSignalEventJson(self: *KodaServer, signal: store.SignalEvent) ![]u8 {
         var out: std.ArrayList(u8) = .empty;
         errdefer out.deinit(self.allocator);
 
@@ -679,7 +727,7 @@ pub const PunchServer = struct {
         return try out.toOwnedSlice(self.allocator);
     }
 
-    fn writeRoomObject(self: *PunchServer, writer: anytype, room: store.Room) !void {
+    fn writeRoomObject(self: *KodaServer, writer: anytype, room: store.Room) !void {
         _ = self;
         try writer.writeByte('{');
         try writer.writeAll("\"id\":");
@@ -691,8 +739,8 @@ pub const PunchServer = struct {
         try writer.writeByte('}');
     }
 
-    fn writeMessageObject(self: *PunchServer, writer: anytype, message: store.Message) !void {
-        _ = self;
+    fn writeMessageObjectLocked(self: *KodaServer, writer: anytype, message: store.Message) !void {
+        const username = self.usernameByUserIdLocked(message.user_id);
         try writer.writeByte('{');
         try writer.writeAll("\"id\":");
         try writeJsonString(writer, message.id);
@@ -700,13 +748,15 @@ pub const PunchServer = struct {
         try writeJsonString(writer, message.room_id);
         try writer.writeAll(",\"user_id\":");
         try writeJsonString(writer, message.user_id);
+        try writer.writeAll(",\"username\":");
+        try writeJsonString(writer, username);
         try writer.writeAll(",\"body\":");
         try writeJsonString(writer, message.body);
         try writer.print(",\"sent_at_unix_ms\":{d}", .{message.sent_at_unix_ms});
         try writer.writeByte('}');
     }
 
-    fn writeStreamObject(self: *PunchServer, writer: anytype, stream: store.StreamSession) !void {
+    fn writeStreamObject(self: *KodaServer, writer: anytype, stream: store.StreamSession) !void {
         _ = self;
         try writer.writeByte('{');
         try writer.writeAll("\"id\":");
@@ -721,42 +771,42 @@ pub const PunchServer = struct {
         try writer.writeByte('}');
     }
 
-    fn notifyUpdate(self: *PunchServer) void {
+    fn notifyUpdate(self: *KodaServer) void {
         _ = self.update_id.rmw(.Add, 1, .release);
         std.Thread.Futex.wake(&self.update_id, 32);
     }
 
-    fn respondJson(self: *PunchServer, request: *http.Server.Request, status: http.Status, body: []const u8) !void {
+    fn respondJson(self: *KodaServer, request: *http.Server.Request, status: http.Status, body: []const u8) !void {
         const headers = [_]http.Header{
             .{ .name = "Content-Type", .value = "application/json; charset=utf-8" },
             .{ .name = "Access-Control-Allow-Origin", .value = self.config.cors_origin },
-            .{ .name = "Access-Control-Allow-Headers", .value = "Content-Type" },
+            .{ .name = "Access-Control-Allow-Headers", .value = "Content-Type,Authorization" },
             .{ .name = "Access-Control-Allow-Methods", .value = "GET,POST,OPTIONS" },
         };
         try request.respond(body, .{ .status = status, .extra_headers = &headers });
     }
 
-    fn respondText(self: *PunchServer, request: *http.Server.Request, status: http.Status, body: []const u8) !void {
+    fn respondText(self: *KodaServer, request: *http.Server.Request, status: http.Status, body: []const u8) !void {
         const headers = [_]http.Header{
             .{ .name = "Content-Type", .value = "text/plain; charset=utf-8" },
             .{ .name = "Access-Control-Allow-Origin", .value = self.config.cors_origin },
-            .{ .name = "Access-Control-Allow-Headers", .value = "Content-Type" },
+            .{ .name = "Access-Control-Allow-Headers", .value = "Content-Type,Authorization" },
             .{ .name = "Access-Control-Allow-Methods", .value = "GET,POST,OPTIONS" },
         };
         try request.respond(body, .{ .status = status, .extra_headers = &headers });
     }
 
-    fn respondOptions(self: *PunchServer, request: *http.Server.Request) !void {
+    fn respondOptions(self: *KodaServer, request: *http.Server.Request) !void {
         const headers = [_]http.Header{
             .{ .name = "Content-Type", .value = "text/plain; charset=utf-8" },
             .{ .name = "Access-Control-Allow-Origin", .value = self.config.cors_origin },
-            .{ .name = "Access-Control-Allow-Headers", .value = "Content-Type" },
+            .{ .name = "Access-Control-Allow-Headers", .value = "Content-Type,Authorization" },
             .{ .name = "Access-Control-Allow-Methods", .value = "GET,POST,OPTIONS" },
         };
         try request.respond("", .{ .status = .no_content, .extra_headers = &headers });
     }
 
-    fn respondRouteError(self: *PunchServer, request: *http.Server.Request, err: anyerror) !void {
+    fn respondRouteError(self: *KodaServer, request: *http.Server.Request, err: anyerror) !void {
         return switch (err) {
             error.InvalidRegistration => self.respondText(request, .bad_request, "username, email, and password are required"),
             error.InvalidLogin => self.respondText(request, .bad_request, "email and password are required"),
@@ -764,15 +814,52 @@ pub const PunchServer = struct {
             error.UsernameTaken => self.respondText(request, .conflict, "username already taken"),
             error.EmailTaken => self.respondText(request, .conflict, "email already registered"),
             error.InvalidPassword, error.UserNotFound => self.respondText(request, .unauthorized, "invalid email or password"),
+            error.InvalidToken, error.UnauthorizedUser => self.respondText(request, .unauthorized, "invalid or expired session"),
             error.MissingContentLength => self.respondText(request, .length_required, "content-length header is required"),
             error.BodyTooLarge => self.respondText(request, .payload_too_large, "request body too large"),
             else => self.respondText(request, .internal_server_error, "internal server error"),
         };
     }
+
+    /// Creates a new session for user_id, stores it, and returns the token.
+    /// The returned slice is owned by the sessions list — do NOT free it.
+    fn createSessionLocked(self: *KodaServer, user_id: []const u8) ![]const u8 {
+        const token = try self.app.state.nextSessionToken(self.allocator);
+        errdefer self.allocator.free(token);
+
+        const session = store.Session{
+            .token = token,
+            .user_id = try self.allocator.dupe(u8, user_id),
+        };
+        errdefer self.allocator.free(session.user_id);
+
+        try self.app.state.sessions.append(self.allocator, session);
+        return token;
+    }
+
+    /// Returns the user_id associated with a token, or null if invalid.
+    /// The returned slice points into session memory — copy it before dropping the lock.
+    fn validateTokenLocked(self: *KodaServer, token: []const u8) ?[]const u8 {
+        for (self.app.state.sessions.items) |session| {
+            if (std.mem.eql(u8, session.token, token)) {
+                return session.user_id;
+            }
+        }
+        return null;
+    }
+
+    fn usernameByUserIdLocked(self: *KodaServer, user_id: []const u8) []const u8 {
+        for (self.app.state.users.items) |user| {
+            if (std.mem.eql(u8, user.id, user_id)) {
+                return user.username;
+            }
+        }
+        return user_id;
+    }
 };
 
 const WebSocketRecvContext = struct {
-    server: *PunchServer,
+    server: *KodaServer,
     socket: *http.Server.WebSocket,
     room_id: []const u8,
     user_id: []const u8,
@@ -797,7 +884,7 @@ fn receiveSocketMessages(ctx: *WebSocketRecvContext) void {
 }
 
 const SignalWebSocketRecvContext = struct {
-    server: *PunchServer,
+    server: *KodaServer,
     socket: *http.Server.WebSocket,
     room_id: []const u8,
     user_id: []const u8,
@@ -819,6 +906,19 @@ fn receiveSignalSocketMessages(ctx: *SignalWebSocketRecvContext) void {
 
         _ = ctx.server.appendSignalEvent(ctx.room_id, ctx.user_id, payload) catch {};
     }
+}
+
+fn extractBearerToken(request: *http.Server.Request) ?[]const u8 {
+    var it = request.head.iterateHeaders();
+    while (it.next()) |header| {
+        if (std.ascii.eqlIgnoreCase(header.name, "authorization")) {
+            const prefix = "Bearer ";
+            if (std.mem.startsWith(u8, header.value, prefix)) {
+                return header.value[prefix.len..];
+            }
+        }
+    }
+    return null;
 }
 
 fn splitTarget(target: []const u8) struct {

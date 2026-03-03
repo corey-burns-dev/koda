@@ -1,6 +1,6 @@
-# Punch
+# Koda
 
-Punch is a full-stack Twitch/Discord-style app scaffold:
+Koda is a full-stack Twitch/Discord-style app scaffold:
 
 - `backend/` Zig backend with HTTP routes and a WebSocket chat gateway
 - `frontend/` Next.js (React + TypeScript) frontend managed with Bun
@@ -26,6 +26,8 @@ make run-local
 
 - frontend: `http://localhost:3000`
 - backend: `http://localhost:8080`
+
+`make install` also configures repo Git hooks (`core.hooksPath=.githooks`) so commits are blocked unless lint and format checks pass.
 
 ## Backend API
 

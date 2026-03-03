@@ -1,29 +1,36 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Activity, Shield, Wifi, WifiOff } from "lucide-react";
+import type { AuthUser } from "../types";
 
 type RightNavProps = {
   backendHealthy: boolean;
   chatSocketState: string;
   signalSocketState: string;
   statusNote: string;
-  userId: string;
+  user: AuthUser | null;
   onOpenAuth: () => void;
+  onLogout: () => void;
 };
 
 function StatusDot({ state }: { state: string | boolean }) {
   const isHealthy = state === "connected" || state === true;
   const isWarning = state === "connecting" || state === "reconnecting";
-  
+
   return (
-    <span className={cn(
-      "w-2 h-2 rounded-full",
-      isHealthy ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" : 
-      isWarning ? "bg-amber-500 animate-pulse" : "bg-red-500"
-    )} />
+    <span
+      className={cn(
+        "w-2 h-2 rounded-full",
+        isHealthy
+          ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
+          : isWarning
+            ? "bg-amber-500 animate-pulse"
+            : "bg-red-500",
+      )}
+    />
   );
 }
 
@@ -32,33 +39,52 @@ export function RightNav({
   chatSocketState,
   signalSocketState,
   statusNote,
-  userId,
+  user,
   onOpenAuth,
+  onLogout,
 }: RightNavProps) {
-  const initials = userId.slice(0, 2).toUpperCase();
+  const initials = (user?.username ?? "guest").slice(0, 2).toUpperCase();
 
   return (
     <aside className="right-panel">
       {/* Profile */}
       <div className="space-y-3">
-        <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Profile</h3>
+        <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
+          Profile
+        </h3>
         <div className="flex items-center gap-2.5 p-2 rounded-xl bg-white/5 border border-white/5 shadow-inner">
           <Avatar className="h-9 w-9 border-2 border-primary/20 bg-gradient-to-br from-primary to-orange-600">
             <AvatarFallback className="text-white font-black">{initials}</AvatarFallback>
           </Avatar>
           <div className="flex flex-col min-w-0">
-            <span className="text-xs font-bold truncate">Anonymous User</span>
-            <code className="text-[10px] text-muted-foreground/60 truncate" title={userId}>{userId.slice(0, 12)}</code>
+            <span className="text-xs font-bold truncate">{user?.username ?? "Anonymous User"}</span>
+            <code
+              className="text-[10px] text-muted-foreground/60 truncate"
+              title={user?.email ?? "guest"}
+            >
+              {user?.email ?? "Sign in required for chat"}
+            </code>
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full h-8 text-[11px] border-white/10 hover:border-primary/50 hover:bg-primary/5 transition-all"
-          onClick={onOpenAuth}
-        >
-          Sign in to save progress
-        </Button>
+        {user ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full h-8 text-[11px] border-white/10 hover:border-primary/50 hover:bg-primary/5 transition-all"
+            onClick={onLogout}
+          >
+            Log out
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full h-8 text-[11px] border-white/10 hover:border-primary/50 hover:bg-primary/5 transition-all"
+            onClick={onOpenAuth}
+          >
+            Sign in to unlock chat
+          </Button>
+        )}
       </div>
 
       <Separator className="bg-white/5" />
@@ -75,11 +101,20 @@ export function RightNav({
               <StatusDot state={backendHealthy} />
               <span className="text-[11px] font-medium text-muted-foreground">API Backend</span>
             </div>
-            <Badge variant="outline" className={cn(
-              "text-[9px] h-4 px-1 border-transparent",
-              backendHealthy ? "text-emerald-500 bg-emerald-500/10" : "text-red-500 bg-red-500/10"
-            )}>
-              {backendHealthy ? <Wifi size={8} className="mr-1" /> : <WifiOff size={8} className="mr-1" />}
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-[9px] h-4 px-1 border-transparent",
+                backendHealthy
+                  ? "text-emerald-500 bg-emerald-500/10"
+                  : "text-red-500 bg-red-500/10",
+              )}
+            >
+              {backendHealthy ? (
+                <Wifi size={8} className="mr-1" />
+              ) : (
+                <WifiOff size={8} className="mr-1" />
+              )}
               {backendHealthy ? "ONLINE" : "OFFLINE"}
             </Badge>
           </div>
@@ -115,9 +150,7 @@ export function RightNav({
           System Activity
         </h3>
         <div className="p-3 rounded-xl bg-primary/5 border border-primary/10">
-          <p className="text-xs text-muted-foreground leading-relaxed italic">
-            "{statusNote}"
-          </p>
+          <p className="text-xs text-muted-foreground leading-relaxed italic">"{statusNote}"</p>
         </div>
       </div>
     </aside>

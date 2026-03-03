@@ -10,7 +10,7 @@ describe("usePersistentUserId", () => {
   });
 
   it("reuses an existing id from localStorage", async () => {
-    window.localStorage.setItem("punch.user_id", "user-existing");
+    window.localStorage.setItem("koda.user_id", "user-existing");
 
     const { result } = renderHook(() => usePersistentUserId());
 
@@ -28,8 +28,6 @@ describe("usePersistentUserId", () => {
       expect(result.current.userId).toMatch(/^user-[a-z0-9]{8}$/);
     });
 
-    expect(window.localStorage.getItem("custom.user_id")).toBe(
-      result.current.userId,
-    );
+    expect(window.localStorage.getItem("custom.user_id")).toBe(result.current.userId);
   });
 });

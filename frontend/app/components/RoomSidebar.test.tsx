@@ -1,10 +1,10 @@
-import type { ComponentProps, FormEvent } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ComponentProps, FormEvent } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { RoomSidebar } from "./RoomSidebar";
 import type { Room, RoomKind, StreamSession } from "../types";
+import { RoomSidebar } from "./RoomSidebar";
 
 const rooms: Room[] = [
   { id: "room-text", name: "General", kind: "text" },
@@ -27,18 +27,18 @@ function renderSidebar(overrides?: Partial<ComponentProps<typeof RoomSidebar>>) 
     <RoomSidebar
       activeRoomId="room-text"
       liveStreams={liveStreams}
-      onCreateRoom={(event: FormEvent<HTMLFormElement>) =>
-        event.preventDefault()
-      }
+      onCreateRoom={(event: FormEvent<HTMLFormElement>) => event.preventDefault()}
       onRoomKindDraftChange={() => {}}
       onRoomNameDraftChange={() => {}}
       onSelectRoom={() => {}}
       roomKindDraft="stream"
-      roomNameById={new Map([
-        ["room-text", "General"],
-        ["room-video", "Cinema"],
-        ["room-stream", "Stage"],
-      ])}
+      roomNameById={
+        new Map([
+          ["room-text", "General"],
+          ["room-video", "Cinema"],
+          ["room-stream", "Stage"],
+        ])
+      }
       roomNameDraft=""
       rooms={rooms}
       tab="all"
@@ -55,18 +55,18 @@ function rerenderSidebar(
     <RoomSidebar
       activeRoomId="room-text"
       liveStreams={liveStreams}
-      onCreateRoom={(event: FormEvent<HTMLFormElement>) =>
-        event.preventDefault()
-      }
+      onCreateRoom={(event: FormEvent<HTMLFormElement>) => event.preventDefault()}
       onRoomKindDraftChange={() => {}}
       onRoomNameDraftChange={() => {}}
       onSelectRoom={() => {}}
       roomKindDraft="stream"
-      roomNameById={new Map([
-        ["room-text", "General"],
-        ["room-video", "Cinema"],
-        ["room-stream", "Stage"],
-      ])}
+      roomNameById={
+        new Map([
+          ["room-text", "General"],
+          ["room-video", "Cinema"],
+          ["room-stream", "Stage"],
+        ])
+      }
       roomNameDraft=""
       rooms={rooms}
       tab="all"
@@ -95,9 +95,7 @@ describe("RoomSidebar", () => {
 
   it("emits create-room callbacks from the form", async () => {
     const user = userEvent.setup();
-    const onCreateRoom = vi.fn((event: FormEvent<HTMLFormElement>) =>
-      event.preventDefault(),
-    );
+    const onCreateRoom = vi.fn((event: FormEvent<HTMLFormElement>) => event.preventDefault());
     const onRoomNameDraftChange = vi.fn();
     const onRoomKindDraftChange = vi.fn((value: RoomKind) => value);
 

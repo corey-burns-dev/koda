@@ -1,10 +1,10 @@
-import { RefObject } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Radio, StopCircle, Search, Eye, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Eye, Radio, Search, StopCircle, User } from "lucide-react";
+import { RefObject } from "react";
 
 type StreamExperienceProps = {
   knownStreamHostId: string | null;
@@ -40,23 +40,31 @@ export function StreamExperience({
       <CardHeader className="flex flex-col gap-3 p-4 pb-1">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className={cn(
-              "p-1.5 rounded-lg",
-              isHosting ? "bg-red-500/10 text-red-500" : "bg-primary/10 text-primary"
-            )}>
+            <div
+              className={cn(
+                "p-1.5 rounded-lg",
+                isHosting ? "bg-red-500/10 text-red-500" : "bg-primary/10 text-primary",
+              )}
+            >
               <Radio size={16} className={isHosting ? "animate-pulse" : ""} />
             </div>
             <CardTitle className="text-base font-bold">
               {isHosting ? "Live Broadcast" : "Stream Discovery"}
             </CardTitle>
           </div>
-          
+
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className="bg-white/5 text-muted-foreground flex gap-1 items-center border-white/5 h-5 text-[10px]">
+            <Badge
+              variant="outline"
+              className="bg-white/5 text-muted-foreground flex gap-1 items-center border-white/5 h-5 text-[10px]"
+            >
               <User size={10} />
               Host: {knownStreamHostId ? knownStreamHostId.slice(0, 8) : "none"}
             </Badge>
-            <Badge variant="outline" className="bg-white/5 text-muted-foreground flex gap-1 items-center border-white/5 h-5 text-[10px]">
+            <Badge
+              variant="outline"
+              className="bg-white/5 text-muted-foreground flex gap-1 items-center border-white/5 h-5 text-[10px]"
+            >
               <Eye size={10} />
               {streamViewerCount} viewers
             </Badge>
@@ -72,17 +80,31 @@ export function StreamExperience({
           />
           <div className="flex gap-1.5">
             {isHosting ? (
-              <Button variant="destructive" size="sm" onClick={onStopBroadcast} className="gap-1.5 font-bold shadow-lg shadow-red-500/10 h-8 text-[11px]">
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={onStopBroadcast}
+                className="gap-1.5 font-bold shadow-lg shadow-red-500/10 h-8 text-[11px]"
+              >
                 <StopCircle size={14} />
                 Stop
               </Button>
             ) : (
-              <Button size="sm" onClick={onStartBroadcast} className="gap-1.5 font-bold shadow-lg shadow-primary/10 bg-primary hover:bg-primary/90 h-8 px-3 text-[11px]">
+              <Button
+                size="sm"
+                onClick={onStartBroadcast}
+                className="gap-1.5 font-bold shadow-lg shadow-primary/10 bg-primary hover:bg-primary/90 h-8 px-3 text-[11px]"
+              >
                 <Radio size={14} />
                 Go Live
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={onFindStream} className="h-8 w-8 p-0 border-white/10">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onFindStream}
+              className="h-8 w-8 p-0 border-white/10"
+            >
               <Search size={14} />
             </Button>
           </div>
@@ -122,7 +144,9 @@ export function StreamExperience({
           </div>
 
           <div className="space-y-2">
-            <h3 className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground px-1">Local Preview</h3>
+            <h3 className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground px-1">
+              Local Preview
+            </h3>
             <div className="relative aspect-[4/3] bg-black/40 rounded-xl border border-white/5 overflow-hidden shadow-lg transition-all hover:border-white/10">
               <video
                 autoPlay
@@ -133,7 +157,9 @@ export function StreamExperience({
               />
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="bg-black/60 backdrop-blur-md px-2 py-1 rounded-full border border-white/10">
-                  <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider">Preview Only</span>
+                  <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-wider">
+                    Preview Only
+                  </span>
                 </div>
               </div>
             </div>

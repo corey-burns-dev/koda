@@ -63,17 +63,8 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
-    background:
-      radial-gradient(
-        circle at 14% 10%,
-        hsla(var(--primary), 0.15) 0%,
-        transparent 32%
-      ),
-      radial-gradient(
-        circle at 86% 76%,
-        hsla(210, 60%, 50%, 0.1) 0%,
-        transparent 35%
-      ),
+    background: radial-gradient(circle at 14% 10%, hsla(var(--primary), 0.15) 0%, transparent 32%),
+      radial-gradient(circle at 86% 76%, hsla(210, 60%, 50%, 0.1) 0%, transparent 35%),
       linear-gradient(150deg, #081018 0%, #0d2032 42%, #0c1a28 100%);
     background-attachment: fixed;
   }
@@ -96,14 +87,14 @@
 }
 
 .top-nav {
-  grid-column: 2 / -1;
+  grid-column: 1 / -1;
   grid-row: 1;
   @apply flex items-center justify-between px-4 border-b border-white/5 bg-background/80 backdrop-blur-xl z-20;
 }
 
 .left-panel {
   grid-column: 1;
-  grid-row: 1 / -1;
+  grid-row: 2;
   @apply overflow-y-auto border-r border-white/5 p-3 flex flex-col gap-3 bg-background/40;
 }
 

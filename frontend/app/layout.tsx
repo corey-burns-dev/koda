@@ -8,7 +8,7 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "Punch",
+  title: "Koda",
   description: "Realtime communities with stream, chat, and rooms.",
 };
 

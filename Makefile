@@ -3,7 +3,7 @@ SHELL := /usr/bin/env bash
 FRONTEND_DIR := frontend
 BACKEND_DIR := backend
 
-.PHONY: run up down dev run-local backend frontend install lint format format-check test build check smoke
+.PHONY: run up down dev run-local backend frontend install setup-hooks lint format format-check test build check smoke
 
 run:
 	docker compose up --build
@@ -43,7 +43,7 @@ dev:
 	echo "🚀 Starting development environment..."; \
 	echo "   Backend:  http://localhost:$$BACKEND_PORT"; \
 	echo "   Frontend: http://localhost:$$FRONTEND_PORT"; \
-	(cd $(BACKEND_DIR) && PUNCH_PORT=$$BACKEND_PORT PUNCH_CORS_ORIGIN=http://localhost:$$FRONTEND_PORT zig build run) & \
+	(cd $(BACKEND_DIR) && KODA_PORT=$$BACKEND_PORT KODA_CORS_ORIGIN=http://localhost:$$FRONTEND_PORT zig build run) & \
 	echo "⏳ Waiting for backend to be healthy..."; \
 	for _ in {1..60}; do \
 		if curl -fsS http://localhost:$$BACKEND_PORT/health >/dev/null 2>&1; then break; fi; \
@@ -67,7 +67,7 @@ run-local:
 	echo "🚀 Starting local run..."; \
 	echo "   Backend:  http://localhost:$$BACKEND_PORT"; \
 	echo "   Frontend: http://localhost:$$FRONTEND_PORT"; \
-	(cd $(BACKEND_DIR) && PUNCH_PORT=$$BACKEND_PORT PUNCH_CORS_ORIGIN=http://localhost:$$FRONTEND_PORT zig build run) & \
+	(cd $(BACKEND_DIR) && KODA_PORT=$$BACKEND_PORT KODA_CORS_ORIGIN=http://localhost:$$FRONTEND_PORT zig build run) & \
 	(cd $(FRONTEND_DIR) && NEXT_PUBLIC_BACKEND_HTTP_URL=http://localhost:$$BACKEND_PORT NEXT_PUBLIC_BACKEND_WS_URL=ws://localhost:$$BACKEND_PORT PORT=$$FRONTEND_PORT bun run dev) & \
 	wait
 
@@ -84,6 +84,10 @@ frontend:
 
 install:
 	cd $(FRONTEND_DIR) && bun install
+	git config core.hooksPath .githooks
+
+setup-hooks:
+	git config core.hooksPath .githooks
 
 lint:
 	cd $(FRONTEND_DIR) && bun run lint

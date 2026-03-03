@@ -45,6 +45,11 @@ pub const User = struct {
     password_hash: []const u8,
 };
 
+pub const Session = struct {
+    token: []const u8,
+    user_id: []const u8,
+};
+
 pub const State = struct {
     rooms: std.ArrayList(Room),
     messages: std.ArrayList(Message),
@@ -52,6 +57,7 @@ pub const State = struct {
     voice_participants: std.ArrayList(VoiceParticipant),
     signal_events: std.ArrayList(SignalEvent),
     users: std.ArrayList(User),
+    sessions: std.ArrayList(Session),
     next_room_id: u64,
     next_message_id: u64,
     next_stream_id: u64,
@@ -67,6 +73,7 @@ pub const State = struct {
             .voice_participants = .empty,
             .signal_events = .empty,
             .users = .empty,
+            .sessions = .empty,
             .next_room_id = 1,
             .next_message_id = 1,
             .next_stream_id = 1,
@@ -119,6 +126,12 @@ pub const State = struct {
             allocator.free(user.password_hash);
         }
         self.users.deinit(allocator);
+
+        for (self.sessions.items) |session| {
+            allocator.free(session.token);
+            allocator.free(session.user_id);
+        }
+        self.sessions.deinit(allocator);
     }
 
     pub fn nextRoomId(self: *State, allocator: std.mem.Allocator) ![]const u8 {
@@ -149,6 +162,13 @@ pub const State = struct {
         const id = try std.fmt.allocPrint(allocator, "user-{d}", .{self.next_user_id});
         self.next_user_id += 1;
         return id;
+    }
+
+    pub fn nextSessionToken(_: *State, allocator: std.mem.Allocator) ![]const u8 {
+        var bytes: [32]u8 = undefined;
+        std.crypto.random.bytes(&bytes);
+        const hex = std.fmt.bytesToHex(bytes, .lower);
+        return try allocator.dupe(u8, &hex);
     }
 };
 

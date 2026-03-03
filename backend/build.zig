@@ -4,27 +4,27 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const backend_mod = b.addModule("punch_backend", .{
+    const backend_mod = b.addModule("koda_backend", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
 
     const exe = b.addExecutable(.{
-        .name = "punch-backend",
+        .name = "koda-backend",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "punch_backend", .module = backend_mod },
+                .{ .name = "koda_backend", .module = backend_mod },
             },
         }),
     });
 
     b.installArtifact(exe);
 
-    const run_step = b.step("run", "Run the Punch backend");
+    const run_step = b.step("run", "Run the Koda backend");
     const run_cmd = b.addRunArtifact(exe);
     run_step.dependOn(&run_cmd.step);
     run_cmd.step.dependOn(b.getInstallStep());

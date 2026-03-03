@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -9,16 +9,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useState } from "react";
+import type { AuthUser } from "../types";
 
-const HTTP_BASE =
-  process.env.NEXT_PUBLIC_BACKEND_HTTP_URL ?? "http://localhost:8080";
+const HTTP_BASE = process.env.NEXT_PUBLIC_BACKEND_HTTP_URL ?? "http://localhost:8080";
 
 type AuthModalProps = {
   onClose: () => void;
-  onSuccess: (user: { id: string, username: string, email: string }) => void;
+  onSuccess: (user: AuthUser) => void;
 };
 
 export function AuthModal({ onClose, onSuccess }: AuthModalProps) {
@@ -36,9 +36,7 @@ export function AuthModal({ onClose, onSuccess }: AuthModalProps) {
     setError(null);
 
     const endpoint = tab === "login" ? "/api/auth/login" : "/api/auth/register";
-    const body = tab === "login" 
-      ? { email, password }
-      : { username, email, password };
+    const body = tab === "login" ? { email, password } : { username, email, password };
 
     if (tab === "register" && password !== confirmPassword) {
       setError("Passwords do not match");
@@ -70,8 +68,8 @@ export function AuthModal({ onClose, onSuccess }: AuthModalProps) {
       }
 
       const user = await response.json();
-      localStorage.setItem("punch.user", JSON.stringify(user));
-      localStorage.setItem("punch.user_id", user.id);
+      localStorage.setItem("koda.user", JSON.stringify(user));
+      localStorage.setItem("koda.user_id", user.id);
       onSuccess(user);
       onClose();
     } catch (err: any) {
@@ -90,39 +88,50 @@ export function AuthModal({ onClose, onSuccess }: AuthModalProps) {
               {tab === "login" ? "Welcome back" : "Create account"}
             </DialogTitle>
             <DialogDescription className="text-muted-foreground/70">
-              {tab === "login" 
-                ? "Enter your credentials to access your account." 
+              {tab === "login"
+                ? "Enter your credentials to access your account."
                 : "Fill in the details below to join the community."}
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs 
-            value={tab} 
+          <Tabs
+            value={tab}
             onValueChange={(v) => {
               setTab(v as "login" | "register");
               setError(null);
-            }} 
+            }}
             className="w-full mt-2"
           >
             <TabsList className="grid w-full grid-cols-2 bg-black/30 p-1">
-              <TabsTrigger value="login" className="data-[state=active]:bg-primary data-[state=active]:text-white">Log in</TabsTrigger>
-              <TabsTrigger value="register" className="data-[state=active]:bg-primary data-[state=active]:text-white">Sign up</TabsTrigger>
+              <TabsTrigger
+                value="login"
+                className="data-[state=active]:bg-primary data-[state=active]:text-white"
+              >
+                Log in
+              </TabsTrigger>
+              <TabsTrigger
+                value="register"
+                className="data-[state=active]:bg-primary data-[state=active]:text-white"
+              >
+                Sign up
+              </TabsTrigger>
             </TabsList>
 
             <div className="grid gap-4 py-6 px-1">
-              {error && (
-                <div className="text-red-500 text-xs font-medium px-1">
-                  {error}
-                </div>
-              )}
+              {error && <div className="text-red-500 text-xs font-medium px-1">{error}</div>}
               {tab === "register" && (
                 <div className="grid gap-2">
-                  <label htmlFor="username" className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Username</label>
-                  <Input 
+                  <label
+                    htmlFor="username"
+                    className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold"
+                  >
+                    Username
+                  </label>
+                  <Input
                     id="username"
-                    placeholder="johndoe" 
-                    type="text" 
-                    autoComplete="username" 
+                    placeholder="johndoe"
+                    type="text"
+                    autoComplete="username"
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
@@ -131,12 +140,17 @@ export function AuthModal({ onClose, onSuccess }: AuthModalProps) {
                 </div>
               )}
               <div className="grid gap-2">
-                <label htmlFor="email" className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Email</label>
-                <Input 
+                <label
+                  htmlFor="email"
+                  className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold"
+                >
+                  Email
+                </label>
+                <Input
                   id="email"
-                  placeholder="name@example.com" 
-                  type="email" 
-                  autoComplete="email" 
+                  placeholder="name@example.com"
+                  type="email"
+                  autoComplete="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -144,12 +158,17 @@ export function AuthModal({ onClose, onSuccess }: AuthModalProps) {
                 />
               </div>
               <div className="grid gap-2">
-                <label htmlFor="password" className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Password</label>
-                <Input 
+                <label
+                  htmlFor="password"
+                  className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold"
+                >
+                  Password
+                </label>
+                <Input
                   id="password"
-                  placeholder="••••••••" 
-                  type="password" 
-                  autoComplete={tab === "login" ? "current-password" : "new-password"} 
+                  placeholder="••••••••"
+                  type="password"
+                  autoComplete={tab === "login" ? "current-password" : "new-password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -158,12 +177,17 @@ export function AuthModal({ onClose, onSuccess }: AuthModalProps) {
               </div>
               {tab === "register" && (
                 <div className="grid gap-2">
-                  <label htmlFor="confirm-password" className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Confirm Password</label>
-                  <Input 
+                  <label
+                    htmlFor="confirm-password"
+                    className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold"
+                  >
+                    Confirm Password
+                  </label>
+                  <Input
                     id="confirm-password"
-                    placeholder="Confirm password" 
-                    type="password" 
-                    autoComplete="new-password" 
+                    placeholder="Confirm password"
+                    type="password"
+                    autoComplete="new-password"
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
@@ -175,15 +199,20 @@ export function AuthModal({ onClose, onSuccess }: AuthModalProps) {
           </Tabs>
 
           <DialogFooter className="px-1 pb-2">
-            <Button variant="ghost" onClick={onClose} type="button" className="text-muted-foreground">
+            <Button
+              variant="ghost"
+              onClick={onClose}
+              type="button"
+              className="text-muted-foreground"
+            >
               Cancel
             </Button>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               disabled={loading}
               className="font-bold px-8 bg-primary hover:bg-primary/90 shadow-[0_0_20px_rgba(245,122,77,0.2)]"
             >
-              {loading ? "Please wait..." : (tab === "login" ? "Log in" : "Create account")}
+              {loading ? "Please wait..." : tab === "login" ? "Log in" : "Create account"}
             </Button>
           </DialogFooter>
         </form>

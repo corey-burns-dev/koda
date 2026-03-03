@@ -12,14 +12,14 @@ pub const Config = struct {
 };
 
 pub fn load(allocator: std.mem.Allocator) !Config {
-    const host = try envOrDefault(allocator, "PUNCH_HOST", "0.0.0.0");
+    const host = try envOrDefault(allocator, "KODA_HOST", "0.0.0.0");
     errdefer allocator.free(host);
 
-    const port_raw = try envOrDefault(allocator, "PUNCH_PORT", "8080");
+    const port_raw = try envOrDefault(allocator, "KODA_PORT", "8080");
     defer allocator.free(port_raw);
     const port = std.fmt.parseInt(u16, port_raw, 10) catch 8080;
 
-    const cors_origin = try envOrDefault(allocator, "PUNCH_CORS_ORIGIN", "http://localhost:5173");
+    const cors_origin = try envOrDefault(allocator, "KODA_CORS_ORIGIN", "http://localhost:5173");
 
     return .{
         .host = host,

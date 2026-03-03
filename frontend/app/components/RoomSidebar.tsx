@@ -1,10 +1,12 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { Plus, Radio, Video, MessageSquare, Hash } from "lucide-react";
+import { Hash, MessageSquare, Plus, Radio, Video } from "lucide-react";
+import { type ComponentType, type FormEvent, useState } from "react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -12,11 +14,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
-import { ROOM_KINDS, Room, RoomKind, StreamSession, BrowseTab } from "../types";
+import { type BrowseTab, ROOM_KINDS, type Room, type RoomKind, type StreamSession } from "../types";
+
+type TabIconProps = { size?: number; className?: string };
+
+const BROWSE_TABS: { id: BrowseTab; label: string; icon: ComponentType<TabIconProps> }[] = [
+  { id: "all", label: "All", icon: Hash },
+  { id: "live", label: "Live", icon: Radio },
+  { id: "video", label: "Video", icon: Video },
+  { id: "text", label: "Text", icon: MessageSquare },
+];
 
 type RoomSidebarProps = {
   activeRoomId: string;
@@ -25,6 +35,7 @@ type RoomSidebarProps = {
   onRoomKindDraftChange: (value: RoomKind) => void;
   onRoomNameDraftChange: (value: string) => void;
   onSelectRoom: (roomId: string) => void;
+  onTabChange: (tab: BrowseTab) => void;
   roomKindDraft: RoomKind;
   roomNameById: Map<string, string>;
   roomNameDraft: string;
@@ -39,6 +50,7 @@ export function RoomSidebar({
   onRoomKindDraftChange,
   onRoomNameDraftChange,
   onSelectRoom,
+  onTabChange,
   roomKindDraft,
   roomNameById,
   roomNameDraft,
@@ -61,6 +73,25 @@ export function RoomSidebar({
 
   return (
     <aside className="left-panel flex flex-col pt-0">
+      {/* Browse tabs */}
+      <div className="pb-2 shrink-0">
+        <Tabs value={tab} onValueChange={(v) => onTabChange(v as BrowseTab)}>
+          <TabsList className="grid w-full grid-cols-4 bg-black/40 p-1 h-9">
+            {BROWSE_TABS.map(({ id, label, icon: Icon }) => (
+              <TabsTrigger
+                key={id}
+                value={id}
+                aria-label={label}
+                className="py-1 px-0 data-[state=active]:bg-primary data-[state=active]:text-white transition-all text-xs flex items-center gap-1"
+              >
+                <Icon size={13} />
+                <span>{label}</span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      </div>
+
       <ScrollArea className="flex-1 -mx-2 px-2">
         <div className="flex flex-col gap-4 py-2">
           {/* Live streams */}
@@ -110,20 +141,23 @@ export function RoomSidebar({
                       "flex items-center justify-between w-full p-2 rounded-lg border border-transparent text-sm transition-all text-left",
                       room.id === activeRoomId
                         ? "bg-primary/15 border-primary/30 text-primary font-medium shadow-[0_0_15px_rgba(245,122,77,0.1)]"
-                        : "hover:bg-white/5 text-muted-foreground hover:text-foreground"
+                        : "hover:bg-white/5 text-muted-foreground hover:text-foreground",
                     )}
                     onClick={() => onSelectRoom(room.id)}
                     type="button"
                   >
                     <div className="flex items-center gap-2">
-                      {room.kind === 'text' && <MessageSquare size={14} className="opacity-50" />}
-                      {room.kind === 'video' && <Video size={14} className="opacity-50" />}
-                      {room.kind === 'stream' && <Radio size={14} className="opacity-50" />}
-                      {room.kind === 'voice' && <Hash size={14} className="opacity-50" />}
+                      {room.kind === "text" && <MessageSquare size={14} className="opacity-50" />}
+                      {room.kind === "video" && <Video size={14} className="opacity-50" />}
+                      {room.kind === "stream" && <Radio size={14} className="opacity-50" />}
+                      {room.kind === "voice" && <Hash size={14} className="opacity-50" />}
                       <span>{room.name}</span>
                     </div>
                     {liveRoomIds.has(room.id) && (
-                      <Badge variant="outline" className="h-4 px-1.5 text-[10px] border-red-500/50 text-red-500 bg-red-500/10">
+                      <Badge
+                        variant="outline"
+                        className="h-4 px-1.5 text-[10px] border-red-500/50 text-red-500 bg-red-500/10"
+                      >
                         LIVE
                       </Badge>
                     )}
@@ -158,8 +192,14 @@ export function RoomSidebar({
             }}
           >
             <div className="grid gap-1.5">
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Name</label>
+              <label
+                htmlFor="room-name-input"
+                className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold"
+              >
+                Name
+              </label>
               <Input
+                id="room-name-input"
                 autoFocus
                 className="h-8 text-sm bg-black/40 border-white/10 focus-visible:ring-primary/50"
                 onChange={(e) => onRoomNameDraftChange(e.target.value)}
@@ -168,12 +208,20 @@ export function RoomSidebar({
               />
             </div>
             <div className="grid gap-1.5">
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Type</label>
+              <label
+                htmlFor="room-kind-select"
+                className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold"
+              >
+                Type
+              </label>
               <Select
                 onValueChange={(v) => onRoomKindDraftChange(v as RoomKind)}
                 value={roomKindDraft}
               >
-                <SelectTrigger className="h-8 text-sm bg-black/40 border-white/10 focus-visible:ring-primary/50">
+                <SelectTrigger
+                  id="room-kind-select"
+                  className="h-8 text-sm bg-black/40 border-white/10 focus-visible:ring-primary/50"
+                >
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent className="bg-card border-white/10">

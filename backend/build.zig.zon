@@ -1,7 +1,7 @@
 .{
-    .name = .punch_backend,
+    .name = .koda_backend,
     .version = "0.1.0",
-    .fingerprint = 0x482f1a768f233ad2,
+    .fingerprint = 0xeca2aa1f39e972bc,
     .minimum_zig_version = "0.15.2",
     .dependencies = .{},
     .paths = .{

@@ -1,4 +1,4 @@
-# Punch Backend (Zig)
+# Koda Backend (Zig)
 
 Realtime backend scaffold with in-memory room/chat/stream/voice state.
 
@@ -10,9 +10,9 @@ make backend
 
 ## Environment
 
-- `PUNCH_HOST` (default: `0.0.0.0`)
-- `PUNCH_PORT` (default: `8080`)
-- `PUNCH_CORS_ORIGIN` (default: `http://localhost:3000`)
+- `KODA_HOST` (default: `0.0.0.0`)
+- `KODA_PORT` (default: `8080`)
+- `KODA_CORS_ORIGIN` (default: `http://localhost:3000`)
 
 ## Routes
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-export function usePersistentUserId(storageKey = "punch.user_id") {
+export function usePersistentUserId(storageKey = "koda.user_id") {
   const [userId, setUserId] = useState<string>("web-user");
 
   useEffect(() => {
