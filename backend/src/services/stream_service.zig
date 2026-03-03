@@ -31,3 +31,25 @@ pub const StreamService = struct {
         return error.StreamNotFound;
     }
 };
+
+test "startStream creates live stream and stopStream flips it offline" {
+    var state = store.State.init(std.testing.allocator);
+    defer state.deinit(std.testing.allocator);
+
+    var streams = StreamService.init(&state, std.testing.allocator);
+
+    const stream = try streams.startStream("room-7", "host-1", "Launch Party");
+    try std.testing.expectEqualStrings("stream-1", stream.id);
+    try std.testing.expect(stream.live);
+
+    try streams.stopStream(stream.id);
+    try std.testing.expect(!state.streams.items[0].live);
+}
+
+test "stopStream returns StreamNotFound for unknown stream id" {
+    var state = store.State.init(std.testing.allocator);
+    defer state.deinit(std.testing.allocator);
+
+    var streams = StreamService.init(&state, std.testing.allocator);
+    try std.testing.expectError(error.StreamNotFound, streams.stopStream("stream-404"));
+}

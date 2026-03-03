@@ -788,3 +788,39 @@ fn writeJsonString(writer: anytype, value: []const u8) !void {
     }
     try writer.writeByte('"');
 }
+
+test "splitTarget separates path and query" {
+    const with_query = splitTarget("/api/messages?room_id=room-1&limit=10");
+    try std.testing.expectEqualStrings("/api/messages", with_query.path);
+    try std.testing.expect(with_query.query != null);
+    try std.testing.expectEqualStrings("room_id=room-1&limit=10", with_query.query.?);
+
+    const without_query = splitTarget("/health");
+    try std.testing.expectEqualStrings("/health", without_query.path);
+    try std.testing.expect(without_query.query == null);
+}
+
+test "queryValue finds key values and handles missing keys" {
+    const query = "room_id=room-2&empty=&flag";
+    try std.testing.expectEqualStrings("room-2", queryValue(query, "room_id").?);
+    try std.testing.expectEqualStrings("", queryValue(query, "empty").?);
+    try std.testing.expectEqualStrings("", queryValue(query, "flag").?);
+    try std.testing.expect(queryValue(query, "missing") == null);
+}
+
+test "parseRoomKind is case-insensitive and defaults to text" {
+    try std.testing.expectEqual(types.RoomKind.voice, parseRoomKind("Voice"));
+    try std.testing.expectEqual(types.RoomKind.video, parseRoomKind("VIDEO"));
+    try std.testing.expectEqual(types.RoomKind.stream, parseRoomKind("stream"));
+    try std.testing.expectEqual(types.RoomKind.text, parseRoomKind("unknown"));
+}
+
+test "writeJsonString escapes control and quote characters" {
+    var out: std.ArrayList(u8) = .empty;
+    defer out.deinit(std.testing.allocator);
+
+    var writer = out.writer(std.testing.allocator);
+    try writeJsonString(&writer, "a\"\\\n\t\r\x01");
+
+    try std.testing.expectEqualStrings("\"a\\\"\\\\\\n\\t\\r\\u0001\"", out.items);
+}

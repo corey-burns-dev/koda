@@ -44,6 +44,7 @@ format-check:
 
 test:
 	cd $(BACKEND_DIR) && zig build test
+	cd $(FRONTEND_DIR) && bun run test
 
 build:
 	cd $(FRONTEND_DIR) && bun run build

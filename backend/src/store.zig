@@ -126,3 +126,22 @@ pub const State = struct {
         return id;
     }
 };
+
+test "state id generators increment independently" {
+    var state = State.init(std.testing.allocator);
+    defer state.deinit(std.testing.allocator);
+
+    const room_id = try state.nextRoomId(std.testing.allocator);
+    defer std.testing.allocator.free(room_id);
+    const message_id = try state.nextMessageId(std.testing.allocator);
+    defer std.testing.allocator.free(message_id);
+    const stream_id = try state.nextStreamId(std.testing.allocator);
+    defer std.testing.allocator.free(stream_id);
+    const signal_id = try state.nextSignalId(std.testing.allocator);
+    defer std.testing.allocator.free(signal_id);
+
+    try std.testing.expectEqualStrings("room-1", room_id);
+    try std.testing.expectEqualStrings("msg-1", message_id);
+    try std.testing.expectEqualStrings("stream-1", stream_id);
+    try std.testing.expectEqualStrings("signal-1", signal_id);
+}
