@@ -1,9 +1,9 @@
 # Punch
 
-Punch is a full-stack Twitch/Discord-style app scaffold with a Bun monorepo:
+Punch is a full-stack Twitch/Discord-style app scaffold:
 
 - `backend/` Zig backend with HTTP routes and a WebSocket chat gateway
-- `frontend/` Next.js (React + TypeScript) frontend
+- `frontend/` Next.js (React + TypeScript) frontend managed with Bun
 
 ## Stack
 
@@ -14,9 +14,14 @@ Punch is a full-stack Twitch/Discord-style app scaffold with a Bun monorepo:
 ## Quick Start
 
 ```bash
-bun install
-bun run dev:back
-bun run dev:front
+make run
+```
+
+For local (non-Docker) development:
+
+```bash
+make install
+make run-local
 ```
 
 - frontend: `http://localhost:3000`
@@ -29,21 +34,26 @@ bun run dev:front
 - `POST /api/rooms` with `{ "name": "...", "kind": "text|voice|video|stream" }`
 - `GET /api/messages?room_id=<id>`
 - `POST /api/messages` with `{ "room_id": "...", "user_id": "...", "body": "..." }`
+- `GET /api/streams`
+- `POST /api/streams` with `{ "room_id": "...", "user_id": "...", "title": "..." }`
+- `POST /api/streams/stop` with `{ "stream_id": "..." }`
 - WebSocket: `ws://localhost:8080/ws/chat?room_id=<id>&user_id=<id>`
+- WebSocket: `ws://localhost:8080/ws/signal?room_id=<id>&user_id=<id>`
 
 WebSocket protocol:
 
 - Client sends text frames as chat messages.
 - Server broadcasts `{"type":"chat.message","message":{...}}` per room.
+- Signal websocket relays JSON payloads for WebRTC as `{"type":"signal.message","event":{...}}`.
 
 ## Lint + Format + Tests
 
 ```bash
-bun run lint
-bun run format:check
-bun run test:back
-bun run build:front
-bun run check
+make lint
+make format-check
+make test
+make build
+make check
 ```
 
 ## Docker
@@ -54,4 +64,4 @@ docker compose up --build
 
 ## CI
 
-GitHub Actions runs `bun run check` on push and pull request.
+GitHub Actions runs `make check` on push and pull request.

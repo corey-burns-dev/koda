@@ -5,8 +5,7 @@ Realtime backend scaffold with in-memory room/chat/stream/voice state.
 ## Run
 
 ```bash
-cd backend
-zig build run
+make backend
 ```
 
 ## Environment
@@ -22,10 +21,15 @@ zig build run
 - `POST /api/rooms`
 - `GET /api/messages?room_id=<id>`
 - `POST /api/messages`
+- `GET /api/streams`
+- `POST /api/streams`
+- `POST /api/streams/stop`
 - `GET /ws/chat` (WebSocket upgrade)
+- `GET /ws/signal` (WebSocket upgrade for WebRTC signaling)
 
 ## Notes
 
 - Persistence is in-memory only right now.
 - WebSocket clients publish plain text frames.
 - Broadcast events are JSON objects with message metadata.
+- Signal websocket accepts JSON payloads and rebroadcasts room events for peer negotiation.
