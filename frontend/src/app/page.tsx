@@ -9,89 +9,24 @@ import {
   useState,
 } from "react";
 
-type RoomKind = "text" | "voice" | "video" | "stream";
-
-type Health = {
-  ok: boolean;
-  service: string;
-};
-
-type Room = {
-  id: string;
-  name: string;
-  kind: RoomKind;
-};
-
-type StreamSession = {
-  id: string;
-  room_id: string;
-  host_user_id: string;
-  title: string;
-  live: boolean;
-};
-
-type ChatMessage = {
-  id: string;
-  room_id: string;
-  user_id: string;
-  body: string;
-  sent_at_unix_ms: number;
-};
-
-type ChatEvent = {
-  type: "chat.message";
-  message: ChatMessage;
-};
-
-type SignalMode = "stream" | "video";
-
-type PeerAnnounceSignal = {
-  kind: "peer.announce";
-  mode: SignalMode;
-  role: "host" | "viewer" | "participant";
-  target_user_id?: string;
-};
-
-type WebrtcOfferSignal = {
-  kind: "webrtc.offer";
-  mode: SignalMode;
-  target_user_id: string;
-  description: RTCSessionDescriptionInit;
-};
-
-type WebrtcAnswerSignal = {
-  kind: "webrtc.answer";
-  mode: SignalMode;
-  target_user_id: string;
-  description: RTCSessionDescriptionInit;
-};
-
-type WebrtcIceSignal = {
-  kind: "webrtc.ice";
-  mode: SignalMode;
-  target_user_id: string;
-  candidate: RTCIceCandidateInit;
-};
-
-type StreamStatusSignal = {
-  kind: "stream.status";
-  mode: "stream";
-  is_live: boolean;
-  title?: string;
-  target_user_id?: string;
-};
-
-type SignalPayload =
-  | PeerAnnounceSignal
-  | WebrtcOfferSignal
-  | WebrtcAnswerSignal
-  | WebrtcIceSignal
-  | StreamStatusSignal;
+import { ChatPanel } from "./components/ChatPanel";
+import { RoomSidebar } from "./components/RoomSidebar";
+import { StreamExperience } from "./components/StreamExperience";
+import { VideoExperience } from "./components/VideoExperience";
+import { usePersistentUserId } from "./hooks/usePersistentUserId";
+import {
+  ChatEvent,
+  ChatMessage,
+  Health,
+  Room,
+  RoomKind,
+  SignalPayload,
+  StreamSession,
+} from "./types";
 
 const HTTP_BASE =
   process.env.NEXT_PUBLIC_BACKEND_HTTP_URL ?? "http://localhost:8080";
 const WS_BASE = process.env.NEXT_PUBLIC_BACKEND_WS_URL ?? "ws://localhost:8080";
-const ROOM_KINDS: RoomKind[] = ["text", "voice", "video", "stream"];
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -106,11 +41,12 @@ function isSignalPayload(value: unknown): value is SignalPayload {
   ) {
     return false;
   }
+
   if (value.mode !== "stream" && value.mode !== "video") {
     return false;
   }
 
-  if (value.kind === "peer.announce") {
+  if (value.kind === "peer.announce" || value.kind === "peer.leave") {
     return typeof value.role === "string";
   }
 
@@ -133,25 +69,11 @@ function isSignalPayload(value: unknown): value is SignalPayload {
   return false;
 }
 
-function readClientUserId(): string {
-  if (typeof window === "undefined") {
-    return "web-user";
-  }
-
-  const existing = window.localStorage.getItem("punch.user_id");
-  if (existing) {
-    return existing;
-  }
-
-  const generated = `user-${Math.random().toString(36).slice(2, 10)}`;
-  window.localStorage.setItem("punch.user_id", generated);
-  return generated;
-}
-
 export default function Home() {
+  const userIdRef = usePersistentUserId();
+
   const chatSocketRef = useRef<WebSocket | null>(null);
   const signalSocketRef = useRef<WebSocket | null>(null);
-  const userIdRef = useRef<string>("web-user");
 
   const streamLocalVideoRef = useRef<HTMLVideoElement | null>(null);
   const streamPreviewVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -166,6 +88,9 @@ export default function Home() {
   );
   const videoRemoteStreamsRef = useRef<Map<string, MediaStream>>(new Map());
 
+  const streamViewerIdsRef = useRef<Set<string>>(new Set());
+  const videoParticipantIdsRef = useRef<Set<string>>(new Set());
+
   const streamLocalMediaRef = useRef<MediaStream | null>(null);
   const hostedStreamIdRef = useRef<string | null>(null);
   const streamModeRef = useRef<"idle" | "hosting" | "watching">("idle");
@@ -176,7 +101,7 @@ export default function Home() {
   const [health, setHealth] = useState<Health | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [streams, setStreams] = useState<StreamSession[]>([]);
-  const [activeRoomId, setActiveRoomId] = useState<string>("");
+  const [activeRoomId, setActiveRoomId] = useState("");
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -199,12 +124,14 @@ export default function Home() {
   const [knownStreamHostId, setKnownStreamHostId] = useState<string | null>(
     null,
   );
+  const [streamViewerIds, setStreamViewerIds] = useState<string[]>([]);
 
   const [videoJoined, setVideoJoined] = useState(false);
   const [videoLocalMedia, setVideoLocalMedia] = useState<MediaStream | null>(
     null,
   );
   const [videoRemoteUserIds, setVideoRemoteUserIds] = useState<string[]>([]);
+  const [videoParticipantIds, setVideoParticipantIds] = useState<string[]>([]);
 
   const [statusNote, setStatusNote] = useState("Ready");
 
@@ -212,10 +139,6 @@ export default function Home() {
     () => rooms.find((room) => room.id === activeRoomId) ?? null,
     [rooms, activeRoomId],
   );
-
-  useEffect(() => {
-    userIdRef.current = readClientUserId();
-  }, []);
 
   useEffect(() => {
     streamLocalMediaRef.current = streamLocalMedia;
@@ -241,6 +164,60 @@ export default function Home() {
     videoJoinedRef.current = videoJoined;
   }, [videoJoined]);
 
+  function setStreamViewers(next: Set<string>): void {
+    streamViewerIdsRef.current = next;
+    setStreamViewerIds(Array.from(next.values()));
+  }
+
+  function addStreamViewer(userId: string): void {
+    if (!userId || userId === userIdRef.current) {
+      return;
+    }
+
+    const next = new Set(streamViewerIdsRef.current);
+    next.add(userId);
+    setStreamViewers(next);
+  }
+
+  function removeStreamViewer(userId: string): void {
+    const next = new Set(streamViewerIdsRef.current);
+    if (!next.delete(userId)) {
+      return;
+    }
+    setStreamViewers(next);
+  }
+
+  function clearStreamViewers(): void {
+    setStreamViewers(new Set());
+  }
+
+  function setVideoParticipants(next: Set<string>): void {
+    videoParticipantIdsRef.current = next;
+    setVideoParticipantIds(Array.from(next.values()));
+  }
+
+  function addVideoParticipant(userId: string): void {
+    if (!userId || userId === userIdRef.current) {
+      return;
+    }
+
+    const next = new Set(videoParticipantIdsRef.current);
+    next.add(userId);
+    setVideoParticipants(next);
+  }
+
+  function removeVideoParticipant(userId: string): void {
+    const next = new Set(videoParticipantIdsRef.current);
+    if (!next.delete(userId)) {
+      return;
+    }
+    setVideoParticipants(next);
+  }
+
+  function clearVideoParticipants(): void {
+    setVideoParticipants(new Set());
+  }
+
   const fetchHealth = useCallback(async (): Promise<void> => {
     try {
       const response = await fetch(`${HTTP_BASE}/health`);
@@ -260,9 +237,11 @@ export default function Home() {
         if (payload.length === 0) {
           return "";
         }
+
         if (prev && payload.some((room) => room.id === prev)) {
           return prev;
         }
+
         return payload[0].id;
       });
     } catch {
@@ -302,6 +281,7 @@ export default function Home() {
     if (!peer) {
       return;
     }
+
     peer.close();
     streamPeerConnectionsRef.current.delete(remoteUserId);
   }
@@ -317,6 +297,8 @@ export default function Home() {
       peer.close();
       videoPeerConnectionsRef.current.delete(remoteUserId);
     }
+
+    removeVideoParticipant(remoteUserId);
 
     if (videoRemoteStreamsRef.current.delete(remoteUserId)) {
       setVideoRemoteUserIds(Array.from(videoRemoteStreamsRef.current.keys()));
@@ -342,11 +324,25 @@ export default function Home() {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       return;
     }
+
     socket.send(JSON.stringify(payload));
   }
 
+  function sendStreamViewerLeave(): void {
+    if (streamModeRef.current !== "watching") {
+      return;
+    }
+
+    sendSignal({
+      kind: "peer.leave",
+      mode: "stream",
+      role: "viewer",
+      target_user_id: knownStreamHostIdRef.current ?? undefined,
+    });
+  }
+
   function makePeerConnection(
-    mode: SignalMode,
+    mode: "stream" | "video",
     remoteUserId: string,
     includeLocalTracks: boolean,
   ): RTCPeerConnection {
@@ -356,6 +352,7 @@ export default function Home() {
       if (!event.candidate) {
         return;
       }
+
       sendSignal({
         kind: "webrtc.ice",
         mode,
@@ -372,8 +369,10 @@ export default function Home() {
       ) {
         if (mode === "stream") {
           closeStreamPeer(remoteUserId);
+          removeStreamViewer(remoteUserId);
           return;
         }
+
         closeVideoPeer(remoteUserId);
       }
     };
@@ -392,6 +391,7 @@ export default function Home() {
         return;
       }
 
+      addVideoParticipant(remoteUserId);
       videoRemoteStreamsRef.current.set(remoteUserId, incoming);
       setVideoRemoteUserIds(Array.from(videoRemoteStreamsRef.current.keys()));
     };
@@ -442,6 +442,7 @@ export default function Home() {
     const peer = ensureStreamPeer(viewerUserId, true);
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
+
     sendSignal({
       kind: "webrtc.offer",
       mode: "stream",
@@ -456,6 +457,7 @@ export default function Home() {
     const peer = ensureVideoPeer(participantUserId);
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
+
     sendSignal({
       kind: "webrtc.offer",
       mode: "video",
@@ -483,6 +485,7 @@ export default function Home() {
       });
 
       closeAllStreamPeers();
+      clearStreamViewers();
       setStreamRemoteMedia(null);
       setStreamLocalMedia(media);
       setStreamMode("hosting");
@@ -512,6 +515,7 @@ export default function Home() {
         is_live: true,
         title: session.title,
       });
+
       await fetchStreams();
     } catch {
       setStatusNote("Could not access camera/mic for stream broadcasting.");
@@ -521,7 +525,8 @@ export default function Home() {
     }
   }
 
-  async function stopBroadcast(): Promise<void> {
+  async function stopBroadcast(notify = true): Promise<void> {
+    sendSignal({ kind: "peer.leave", mode: "stream", role: "host" });
     sendSignal({ kind: "stream.status", mode: "stream", is_live: false });
 
     const streamId = hostedStreamIdRef.current;
@@ -536,13 +541,18 @@ export default function Home() {
     }
 
     closeAllStreamPeers();
+    clearStreamViewers();
     stopMediaStream(streamLocalMediaRef.current);
     setStreamLocalMedia(null);
     setStreamRemoteMedia(null);
     setHostedStreamId(null);
     setKnownStreamHostId(null);
     setStreamMode("idle");
-    setStatusNote("Broadcast stopped.");
+
+    if (notify) {
+      setStatusNote("Broadcast stopped.");
+    }
+
     await fetchStreams();
   }
 
@@ -562,6 +572,7 @@ export default function Home() {
         audio: true,
       });
 
+      clearVideoParticipants();
       setVideoLocalMedia(media);
       setVideoJoined(true);
       setStatusNote("Joined video room.");
@@ -572,10 +583,16 @@ export default function Home() {
   }
 
   function leaveVideoRoom(notify = true): void {
+    if (videoJoinedRef.current) {
+      sendSignal({ kind: "peer.leave", mode: "video", role: "participant" });
+    }
+
     closeAllVideoPeers();
+    clearVideoParticipants();
     stopMediaStream(videoLocalMediaRef.current);
     setVideoLocalMedia(null);
     setVideoJoined(false);
+
     if (notify) {
       setStatusNote("Left video room.");
     }
@@ -583,20 +600,27 @@ export default function Home() {
 
   function resetRoomRealtimeState(): void {
     if (streamModeRef.current === "hosting") {
+      sendSignal({ kind: "peer.leave", mode: "stream", role: "host" });
       sendSignal({ kind: "stream.status", mode: "stream", is_live: false });
+
       const streamId = hostedStreamIdRef.current;
       if (streamId) {
         fetch(`${HTTP_BASE}/api/streams/stop`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ stream_id: streamId }),
-        }).catch(() => {
-          // Room switches should keep local teardown even on request failures.
-        });
+        })
+          .then(() => fetchStreams())
+          .catch(() => {
+            // Room switches should keep local teardown even on request failures.
+          });
       }
     }
 
+    sendStreamViewerLeave();
+
     closeAllStreamPeers();
+    clearStreamViewers();
     setStreamRemoteMedia(null);
     setKnownStreamHostId(null);
     setStreamMode("idle");
@@ -608,12 +632,21 @@ export default function Home() {
     leaveVideoRoom(false);
   }
 
+  function handleSelectRoom(nextRoomId: string): void {
+    if (nextRoomId === activeRoomId) {
+      return;
+    }
+
+    resetRoomRealtimeState();
+    setActiveRoomId(nextRoomId);
+  }
+
   useEffect(() => {
     return () => {
       resetRoomRealtimeState();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRoomId]);
+  }, []);
 
   useEffect(() => {
     if (!activeRoomId) {
@@ -649,9 +682,11 @@ export default function Home() {
         if (payload.type !== "chat.message") {
           return;
         }
+
         if (payload.message.room_id !== activeRoomId) {
           return;
         }
+
         setMessages((prev) => [...prev, payload.message]);
       } catch {
         // Ignore malformed payloads.
@@ -666,7 +701,7 @@ export default function Home() {
       }
       socket.close();
     };
-  }, [activeRoomId]);
+  }, [activeRoomId, userIdRef]);
 
   async function handleStreamSignal(
     fromUserId: string,
@@ -679,6 +714,10 @@ export default function Home() {
     if (payload.kind === "peer.announce") {
       if (payload.role === "host") {
         setKnownStreamHostId(fromUserId);
+      }
+
+      if (payload.role === "viewer") {
+        addStreamViewer(fromUserId);
       }
 
       if (streamModeRef.current === "hosting" && payload.role === "viewer") {
@@ -697,8 +736,29 @@ export default function Home() {
       return;
     }
 
+    if (payload.kind === "peer.leave") {
+      if (
+        payload.role === "host" &&
+        fromUserId === knownStreamHostIdRef.current
+      ) {
+        closeStreamPeer(fromUserId);
+        setStreamRemoteMedia(null);
+        setKnownStreamHostId(null);
+        setStreamMode("idle");
+        setStatusNote("Host left the stream.");
+      }
+
+      if (payload.role === "viewer") {
+        removeStreamViewer(fromUserId);
+        closeStreamPeer(fromUserId);
+      }
+
+      return;
+    }
+
     if (payload.kind === "stream.status") {
       if (!payload.is_live && fromUserId === knownStreamHostIdRef.current) {
+        closeStreamPeer(fromUserId);
         setStreamRemoteMedia(null);
         setStreamMode("idle");
       }
@@ -711,6 +771,7 @@ export default function Home() {
         return;
       }
 
+      setKnownStreamHostId(fromUserId);
       const peer = ensureStreamPeer(fromUserId, false);
       await peer.setRemoteDescription(
         new RTCSessionDescription(payload.description),
@@ -765,6 +826,8 @@ export default function Home() {
         return;
       }
 
+      addVideoParticipant(fromUserId);
+
       const shouldInitiateOffer = userIdRef.current < fromUserId;
       if (shouldInitiateOffer) {
         await createVideoOfferForParticipant(fromUserId);
@@ -772,7 +835,15 @@ export default function Home() {
       return;
     }
 
+    if (payload.kind === "peer.leave") {
+      if (payload.role === "participant") {
+        closeVideoPeer(fromUserId);
+      }
+      return;
+    }
+
     if (payload.kind === "webrtc.offer") {
+      addVideoParticipant(fromUserId);
       const peer = ensureVideoPeer(fromUserId);
       await peer.setRemoteDescription(
         new RTCSessionDescription(payload.description),
@@ -830,6 +901,9 @@ export default function Home() {
           kind: "peer.announce",
           mode: "stream",
           role: isHosting ? "host" : "viewer",
+          target_user_id: isHosting
+            ? undefined
+            : (knownStreamHostIdRef.current ?? undefined),
         });
       }
 
@@ -862,7 +936,6 @@ export default function Home() {
           typeof eventPayload.user_id === "string"
             ? eventPayload.user_id
             : null;
-
         if (!fromUserId || !isSignalPayload(parsedPayload)) {
           return;
         }
@@ -941,6 +1014,7 @@ export default function Home() {
     event: FormEvent<HTMLFormElement>,
   ): Promise<void> {
     event.preventDefault();
+
     const name = roomNameDraft.trim();
     if (!name) {
       return;
@@ -959,7 +1033,7 @@ export default function Home() {
 
     const room = (await response.json()) as Room;
     setRooms((prev) => [...prev, room]);
-    setActiveRoomId(room.id);
+    handleSelectRoom(room.id);
     setRoomNameDraft("");
     setStatusNote(`Created ${room.kind} room "${room.name}".`);
   }
@@ -986,6 +1060,9 @@ export default function Home() {
     return entries;
   }, [rooms]);
 
+  const videoParticipantCount =
+    videoParticipantIds.length + (videoJoined ? 1 : 0);
+
   return (
     <main className="shell">
       <header className="hero">
@@ -1003,72 +1080,18 @@ export default function Home() {
       </header>
 
       <section className="grid">
-        <aside className="panel sidebar">
-          <div>
-            <h2>Live Now</h2>
-            <div className="stream-list">
-              {liveStreams.map((stream) => (
-                <button
-                  key={stream.id}
-                  className="stream-card"
-                  onClick={() => setActiveRoomId(stream.room_id)}
-                  type="button"
-                >
-                  <strong>{stream.title}</strong>
-                  <span>Host: {stream.host_user_id}</span>
-                  <small>
-                    Room: {roomNameById.get(stream.room_id) ?? stream.room_id}
-                  </small>
-                </button>
-              ))}
-              {liveStreams.length === 0 ? (
-                <p className="muted">No live streams yet.</p>
-              ) : null}
-            </div>
-          </div>
-
-          <div>
-            <h2>Rooms</h2>
-            <ul className="rooms">
-              {rooms.map((room) => (
-                <li key={room.id}>
-                  <button
-                    className={
-                      room.id === activeRoomId ? "room active" : "room"
-                    }
-                    onClick={() => setActiveRoomId(room.id)}
-                    type="button"
-                  >
-                    <span>{room.name}</span>
-                    <small>{room.kind}</small>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <form className="create-room" onSubmit={submitCreateRoom}>
-            <h3>Create Room</h3>
-            <input
-              onChange={(event) => setRoomNameDraft(event.target.value)}
-              placeholder="Room name"
-              value={roomNameDraft}
-            />
-            <select
-              onChange={(event) =>
-                setRoomKindDraft(event.target.value as RoomKind)
-              }
-              value={roomKindDraft}
-            >
-              {ROOM_KINDS.map((kind) => (
-                <option key={kind} value={kind}>
-                  {kind}
-                </option>
-              ))}
-            </select>
-            <button type="submit">Create</button>
-          </form>
-        </aside>
+        <RoomSidebar
+          activeRoomId={activeRoomId}
+          liveStreams={liveStreams}
+          onCreateRoom={submitCreateRoom}
+          onRoomKindDraftChange={setRoomKindDraft}
+          onRoomNameDraftChange={setRoomNameDraft}
+          onSelectRoom={handleSelectRoom}
+          roomKindDraft={roomKindDraft}
+          roomNameById={roomNameById}
+          roomNameDraft={roomNameDraft}
+          rooms={rooms}
+        />
 
         <section className="panel workspace">
           <header className="room-head">
@@ -1078,143 +1101,52 @@ export default function Home() {
 
           <div className="experience">
             {activeRoom?.kind === "stream" ? (
-              <section className="mode-panel">
-                <div className="mode-toolbar">
-                  <input
-                    onChange={(event) =>
-                      setStreamTitleDraft(event.target.value)
-                    }
-                    placeholder="Stream title"
-                    value={streamTitleDraft}
-                  />
-                  {streamMode === "hosting" ? (
-                    <button
-                      onClick={() =>
-                        stopBroadcast().catch(() =>
-                          setStatusNote("Could not stop stream cleanly."),
-                        )
-                      }
-                      type="button"
-                    >
-                      Stop Broadcast
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() =>
-                        startBroadcast().catch(() =>
-                          setStatusNote("Failed to start broadcast."),
-                        )
-                      }
-                      type="button"
-                    >
-                      Go Live
-                    </button>
-                  )}
-                  <button
-                    onClick={() =>
-                      sendSignal({
-                        kind: "peer.announce",
-                        mode: "stream",
-                        role: "viewer",
-                        target_user_id: knownStreamHostId ?? undefined,
-                      })
-                    }
-                    type="button"
-                  >
-                    Find Stream
-                  </button>
-                </div>
-
-                <div className="video-stack">
-                  <article>
-                    <h3>
-                      {streamMode === "hosting"
-                        ? "Your Broadcast"
-                        : "Live Stream"}
-                    </h3>
-                    {streamMode === "hosting" ? (
-                      <video
-                        autoPlay
-                        className="video-frame"
-                        muted
-                        playsInline
-                        ref={streamLocalVideoRef}
-                      />
-                    ) : (
-                      <video
-                        autoPlay
-                        className="video-frame"
-                        playsInline
-                        ref={streamRemoteVideoRef}
-                      />
-                    )}
-                  </article>
-                  <article>
-                    <h3>Preview</h3>
-                    <video
-                      autoPlay
-                      className="video-frame"
-                      muted
-                      playsInline
-                      ref={streamPreviewVideoRef}
-                    />
-                  </article>
-                </div>
-              </section>
+              <StreamExperience
+                knownStreamHostId={knownStreamHostId}
+                onFindStream={() =>
+                  sendSignal({
+                    kind: "peer.announce",
+                    mode: "stream",
+                    role: "viewer",
+                    target_user_id: knownStreamHostId ?? undefined,
+                  })
+                }
+                onStartBroadcast={() => {
+                  startBroadcast().catch(() => {
+                    setStatusNote("Failed to start broadcast.");
+                  });
+                }}
+                onStopBroadcast={() => {
+                  stopBroadcast().catch(() => {
+                    setStatusNote("Could not stop stream cleanly.");
+                  });
+                }}
+                onStreamTitleDraftChange={setStreamTitleDraft}
+                streamLocalVideoRef={streamLocalVideoRef}
+                streamMode={streamMode}
+                streamPreviewVideoRef={streamPreviewVideoRef}
+                streamRemoteVideoRef={streamRemoteVideoRef}
+                streamTitleDraft={streamTitleDraft}
+                streamViewerCount={streamViewerIds.length}
+              />
             ) : null}
 
             {activeRoom?.kind === "video" ? (
-              <section className="mode-panel">
-                <div className="mode-toolbar">
-                  {videoJoined ? (
-                    <button onClick={() => leaveVideoRoom()} type="button">
-                      Leave Video Room
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() =>
-                        joinVideoRoom().catch(() =>
-                          setStatusNote("Could not join video room."),
-                        )
-                      }
-                      type="button"
-                    >
-                      Join Video Room
-                    </button>
-                  )}
-                </div>
-
-                <div className="video-grid">
-                  <article>
-                    <h3>You</h3>
-                    <video
-                      autoPlay
-                      className="video-frame"
-                      muted
-                      playsInline
-                      ref={videoLocalVideoRef}
-                    />
-                  </article>
-                  {videoRemoteUserIds.map((remoteUserId) => (
-                    <article key={remoteUserId}>
-                      <h3>{remoteUserId}</h3>
-                      <video
-                        autoPlay
-                        className="video-frame"
-                        playsInline
-                        ref={(element) => {
-                          if (!element) {
-                            return;
-                          }
-                          element.srcObject =
-                            videoRemoteStreamsRef.current.get(remoteUserId) ??
-                            null;
-                        }}
-                      />
-                    </article>
-                  ))}
-                </div>
-              </section>
+              <VideoExperience
+                getRemoteVideoStream={(remoteUserId) =>
+                  videoRemoteStreamsRef.current.get(remoteUserId) ?? null
+                }
+                onJoinVideoRoom={() => {
+                  joinVideoRoom().catch(() => {
+                    setStatusNote("Could not join video room.");
+                  });
+                }}
+                onLeaveVideoRoom={() => leaveVideoRoom()}
+                videoJoined={videoJoined}
+                videoLocalVideoRef={videoLocalVideoRef}
+                videoParticipantCount={videoParticipantCount}
+                videoRemoteUserIds={videoRemoteUserIds}
+              />
             ) : null}
 
             {activeRoom &&
@@ -1229,31 +1161,12 @@ export default function Home() {
             ) : null}
           </div>
 
-          <section className="chat-panel">
-            <h2>Room Chat</h2>
-            <div className="chat-log">
-              {messages.map((message) => (
-                <article key={message.id} className="msg">
-                  <header>
-                    <strong>{message.user_id}</strong>
-                    <span>
-                      {new Date(message.sent_at_unix_ms).toLocaleTimeString()}
-                    </span>
-                  </header>
-                  <p>{message.body}</p>
-                </article>
-              ))}
-            </div>
-            <form className="composer" onSubmit={submitMessage}>
-              <input
-                aria-label="Message"
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder="Send a message"
-                value={draft}
-              />
-              <button type="submit">Send</button>
-            </form>
-          </section>
+          <ChatPanel
+            draft={draft}
+            messages={messages}
+            onDraftChange={setDraft}
+            onSubmit={submitMessage}
+          />
         </section>
       </section>
     </main>
