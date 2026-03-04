@@ -106,7 +106,7 @@ describe("RoomSidebar", () => {
       roomNameDraft: "",
     });
 
-    await user.click(screen.getByRole("button", { name: "+ New room" }));
+    await user.click(screen.getByRole("button", { name: "New room" }));
 
     const input = screen.getByPlaceholderText("Room name");
     fireEvent.change(input, { target: { value: "Streaming Lab" } });

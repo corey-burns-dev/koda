@@ -2,11 +2,12 @@ import "@testing-library/jest-dom/vitest";
 import { vi } from "vitest";
 
 // Mock ResizeObserver for Radix UI components
-global.ResizeObserver = vi.fn().mockImplementation(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-}));
+class ResizeObserverMock {
+  observe = vi.fn();
+  unobserve = vi.fn();
+  disconnect = vi.fn();
+}
+global.ResizeObserver = ResizeObserverMock;
 
 // Mock scrollIntoView which is not implemented in jsdom
 window.HTMLElement.prototype.scrollIntoView = vi.fn();

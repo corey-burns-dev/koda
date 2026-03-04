@@ -1,10 +1,10 @@
+import { Eye, Radio, Search, StopCircle, User } from "lucide-react";
+import { RefObject } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { Eye, Radio, Search, StopCircle, User } from "lucide-react";
-import { RefObject } from "react";
 
 type StreamExperienceProps = {
   knownStreamHostId: string | null;

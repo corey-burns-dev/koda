@@ -1,58 +1,55 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
 
 @layer base {
   :root {
-    --background: 210 50% 6%;
-    --foreground: 213 100% 96%;
-    --card: 210 60% 8%;
-    --card-foreground: 213 100% 96%;
-    --popover: 210 60% 8%;
-    --popover-foreground: 213 100% 96%;
-    --primary: 16 89% 63%;
+    --background: 222 47% 5%;
+    --foreground: 215 20% 88%;
+    --card: 222 42% 7%;
+    --card-foreground: 215 20% 88%;
+    --popover: 222 42% 7%;
+    --popover-foreground: 215 20% 88%;
+    --primary: 18 88% 60%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 15%;
-    --secondary-foreground: 213 100% 96%;
-    --muted: 210 40% 15%;
-    --muted-foreground: 210 20% 70%;
-    --accent: 16 89% 63%;
+    --secondary: 222 30% 11%;
+    --secondary-foreground: 215 20% 88%;
+    --muted: 222 30% 11%;
+    --muted-foreground: 215 14% 50%;
+    --accent: 18 88% 60%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 210 40% 15%;
-    --input: 210 40% 15%;
-    --ring: 16 89% 63%;
-    --radius: 0.75rem;
+    --border: 222 30% 11%;
+    --input: 222 30% 11%;
+    --ring: 18 88% 60%;
+    --radius: 0.5rem;
 
-    /* Custom vars from original app */
-    --topnav-h: 56px;
-    --leftnav-w: 280px;
-    --rightnav-w: 260px;
-    --accent-strong: 7 97% 62%;
+    --topnav-h: 44px;
+    --leftnav-w: 212px;
+    --rightnav-w: 184px;
+    --accent-strong: 12 95% 56%;
   }
 
   .dark {
-    /* Same as root since it's a dark theme by default */
-    --background: 210 50% 6%;
-    --foreground: 213 100% 96%;
-    --card: 210 60% 8%;
-    --card-foreground: 213 100% 96%;
-    --popover: 210 60% 8%;
-    --popover-foreground: 213 100% 96%;
-    --primary: 16 89% 63%;
+    --background: 222 47% 5%;
+    --foreground: 215 20% 88%;
+    --card: 222 42% 7%;
+    --card-foreground: 215 20% 88%;
+    --popover: 222 42% 7%;
+    --popover-foreground: 215 20% 88%;
+    --primary: 18 88% 60%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 15%;
-    --secondary-foreground: 213 100% 96%;
-    --muted: 210 40% 20%;
-    --muted-foreground: 210 20% 70%;
-    --accent: 16 89% 63%;
+    --secondary: 222 30% 11%;
+    --secondary-foreground: 215 20% 88%;
+    --muted: 222 35% 14%;
+    --muted-foreground: 215 14% 50%;
+    --accent: 18 88% 60%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 210 40% 15%;
-    --input: 210 40% 15%;
-    --ring: 16 89% 63%;
+    --border: 222 30% 11%;
+    --input: 222 30% 11%;
+    --ring: 18 88% 60%;
   }
 }
 
@@ -62,10 +59,13 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
-    background: radial-gradient(circle at 14% 10%, hsla(var(--primary), 0.15) 0%, transparent 32%),
-      radial-gradient(circle at 86% 76%, hsla(210, 60%, 50%, 0.1) 0%, transparent 35%),
-      linear-gradient(150deg, #081018 0%, #0d2032 42%, #0c1a28 100%);
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
+    background:
+      radial-gradient(ellipse 70% 50% at 8% 0%, hsla(var(--primary), 0.06) 0%, transparent 100%),
+      radial-gradient(ellipse 50% 60% at 92% 100%, hsla(215, 80%, 40%, 0.05) 0%, transparent 100%),
+      #060c15;
     background-attachment: fixed;
   }
 }
@@ -80,34 +80,40 @@
   overflow: hidden;
 }
 
-/* ── Refined Styles ────────────────────────────────────────────── */
+/* ── Panel Classes ─────────────────────────────────────────────── */
 
 .glass-panel {
-  @apply bg-card/60 backdrop-blur-md border-white/5;
+  @apply bg-card/60 backdrop-blur-md border-white/[0.04];
 }
 
 .top-nav {
   grid-column: 1 / -1;
   grid-row: 1;
-  @apply flex items-center justify-between px-4 border-b border-white/5 bg-background/80 backdrop-blur-xl z-20;
+  @apply flex items-center justify-between px-3 border-b border-white/[0.05] bg-background/90 backdrop-blur-xl z-20;
 }
 
 .left-panel {
   grid-column: 1;
   grid-row: 2;
-  @apply overflow-y-auto border-r border-white/5 p-3 flex flex-col gap-3 bg-background/40;
+  @apply overflow-y-auto border-r border-white/[0.05] px-2 py-2 flex flex-col gap-2 bg-background/20;
 }
 
 .main-panel {
   grid-column: 2;
   grid-row: 2;
-  @apply flex flex-col overflow-hidden p-4 gap-3 border-t border-white/5;
+  @apply flex flex-col overflow-hidden px-3 py-2.5 gap-2;
 }
 
 .right-panel {
   grid-column: 3;
   grid-row: 2;
-  @apply overflow-y-auto border-l border-white/5 p-3 flex flex-col gap-4 bg-background/40;
+  @apply overflow-y-auto border-l border-white/[0.05] px-2 py-2.5 flex flex-col gap-3 bg-background/20;
+}
+
+/* ── Section Label ─────────────────────────────────────────────── */
+
+.section-label {
+  @apply text-[9px] uppercase tracking-[0.12em] font-semibold text-muted-foreground/60;
 }
 
 /* ── Custom Component Tweaks ───────────────────────────────────── */
@@ -117,32 +123,32 @@
 }
 
 .live-dot {
-  @apply inline-block w-2 h-2 bg-red-500 rounded-full mr-2 animate-pulse;
+  @apply inline-block w-1.5 h-1.5 bg-red-500 rounded-full mr-1.5 animate-pulse;
 }
 
 .video-frame {
-  @apply w-full aspect-video bg-black/40 rounded-xl border border-white/10 overflow-hidden object-cover;
+  @apply w-full aspect-video bg-black/40 rounded-lg border border-white/10 overflow-hidden object-cover;
 }
 
 .chat-log {
-  @apply overflow-y-auto border border-white/5 rounded-xl p-4 bg-black/20;
+  @apply overflow-y-auto border border-white/[0.04] rounded-lg p-3 bg-black/20;
 }
 
 .msg {
-  @apply py-2 border-b border-white/5 last:border-0;
+  @apply py-1.5 border-b border-white/[0.04] last:border-0;
 }
 
 /* ── Scrollbar ─────────────────────────────────────────────────── */
 
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 ::-webkit-scrollbar-track {
   @apply bg-transparent;
 }
 ::-webkit-scrollbar-thumb {
-  @apply bg-white/10 rounded-full;
+  @apply bg-white/[0.08] rounded-full;
 }
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-white/20;
+  @apply bg-white/[0.15] rounded-full;
 }

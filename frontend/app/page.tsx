@@ -4,7 +4,6 @@ import { Hash, MessageSquare, Radio, Video as VideoIcon } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { AuthModal } from "./components/AuthModal";
 import { ChatPanel } from "./components/ChatPanel";
 import { RightNav } from "./components/RightNav";
@@ -271,7 +270,9 @@ export default function Home() {
   }
 
   function closeAllStreamPeers(): void {
-    streamPeerConnectionsRef.current.forEach((peer) => peer.close());
+    streamPeerConnectionsRef.current.forEach((peer) => {
+      peer.close();
+    });
     streamPeerConnectionsRef.current.clear();
   }
 
@@ -290,7 +291,9 @@ export default function Home() {
   }
 
   function closeAllVideoPeers(): void {
-    videoPeerConnectionsRef.current.forEach((peer) => peer.close());
+    videoPeerConnectionsRef.current.forEach((peer) => {
+      peer.close();
+    });
     videoPeerConnectionsRef.current.clear();
     videoRemoteStreamsRef.current.clear();
     setVideoRemoteUserIds([]);
@@ -300,7 +303,9 @@ export default function Home() {
     if (!stream) {
       return;
     }
-    stream.getTracks().forEach((track) => track.stop());
+    stream.getTracks().forEach((track) => {
+      track.stop();
+    });
   }
 
   function sendSignal(payload: SignalPayload): void {
@@ -1016,7 +1021,9 @@ export default function Home() {
 
   const roomNameById = useMemo(() => {
     const entries = new Map<string, string>();
-    rooms.forEach((room) => entries.set(room.id, room.name));
+    rooms.forEach((room) => {
+      entries.set(room.id, room.name);
+    });
     return entries;
   }, [rooms]);
 
@@ -1055,30 +1062,22 @@ export default function Home() {
       />
 
       <section className="main-panel">
-        <header className="flex flex-col gap-0.5 pb-1">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-black tracking-tighter">
-              {activeRoom ? activeRoom.name : "Pick a room"}
-            </h2>
-            {activeRoom && (
-              <Badge
-                variant="outline"
-                className="h-4 px-1.5 bg-primary/10 border-primary/20 text-primary text-[9px] font-bold uppercase tracking-widest"
-              >
-                {activeRoom.kind === "text" && <MessageSquare size={10} className="mr-1" />}
-                {activeRoom.kind === "video" && <VideoIcon size={10} className="mr-1" />}
-                {activeRoom.kind === "stream" && <Radio size={10} className="mr-1" />}
-                {activeRoom.kind === "voice" && <Hash size={10} className="mr-1" />}
-                {activeRoom.kind}
-              </Badge>
-            )}
-          </div>
-          <p className="text-[11px] text-muted-foreground font-medium">
-            {activeRoom
-              ? `You are currently in ${activeRoom.name}. Enjoy the conversation.`
-              : "Select a room from the sidebar to start chatting or streaming."}
-          </p>
-          <Separator className="mt-2 bg-white/5" />
+        <header className="flex items-center gap-2 pb-2 border-b border-white/[0.05] shrink-0">
+          <h2 className="text-sm font-semibold tracking-tight">
+            {activeRoom ? activeRoom.name : "Pick a room"}
+          </h2>
+          {activeRoom && (
+            <Badge
+              variant="outline"
+              className="h-4 px-1.5 bg-primary/10 border-primary/20 text-primary text-[9px] font-bold uppercase tracking-widest"
+            >
+              {activeRoom.kind === "text" && <MessageSquare size={10} className="mr-1" />}
+              {activeRoom.kind === "video" && <VideoIcon size={10} className="mr-1" />}
+              {activeRoom.kind === "stream" && <Radio size={10} className="mr-1" />}
+              {activeRoom.kind === "voice" && <Hash size={10} className="mr-1" />}
+              {activeRoom.kind}
+            </Badge>
+          )}
         </header>
 
         {activeRoom?.kind === "stream" ? (

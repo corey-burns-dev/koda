@@ -1,8 +1,8 @@
+import { Users, Video, VideoOff } from "lucide-react";
+import { RefObject } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Video, VideoOff } from "lucide-react";
-import { RefObject } from "react";
 
 type VideoExperienceProps = {
   onJoinVideoRoom: () => void;

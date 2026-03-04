@@ -909,7 +909,7 @@ fn receiveSignalSocketMessages(ctx: *SignalWebSocketRecvContext) void {
 }
 
 fn extractBearerToken(request: *http.Server.Request) ?[]const u8 {
-    var it = request.head.iterateHeaders();
+    var it = request.iterateHeaders();
     while (it.next()) |header| {
         if (std.ascii.eqlIgnoreCase(header.name, "authorization")) {
             const prefix = "Bearer ";

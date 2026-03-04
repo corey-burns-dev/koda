@@ -74,17 +74,17 @@ export function RoomSidebar({
   return (
     <aside className="left-panel flex flex-col pt-0">
       {/* Browse tabs */}
-      <div className="pb-2 shrink-0">
+      <div className="pb-1.5 shrink-0">
         <Tabs value={tab} onValueChange={(v) => onTabChange(v as BrowseTab)}>
-          <TabsList className="grid w-full grid-cols-4 bg-black/40 p-1 h-9">
+          <TabsList className="grid w-full grid-cols-4 bg-black/30 p-0.5 h-8">
             {BROWSE_TABS.map(({ id, label, icon: Icon }) => (
               <TabsTrigger
                 key={id}
                 value={id}
                 aria-label={label}
-                className="py-1 px-0 data-[state=active]:bg-primary data-[state=active]:text-white transition-all text-xs flex items-center gap-1"
+                className="py-1 px-0 data-[state=active]:bg-primary data-[state=active]:text-white transition-all text-[10px] flex items-center gap-1"
               >
-                <Icon size={13} />
+                <Icon size={11} />
                 <span>{label}</span>
               </TabsTrigger>
             ))}
@@ -92,27 +92,27 @@ export function RoomSidebar({
         </Tabs>
       </div>
 
-      <ScrollArea className="flex-1 -mx-2 px-2">
-        <div className="flex flex-col gap-4 py-2">
+      <ScrollArea className="flex-1 -mx-1 px-1">
+        <div className="flex flex-col gap-3 py-1">
           {/* Live streams */}
           {visibleStreams.length > 0 && (
-            <div className="space-y-2">
+            <div className="space-y-1">
               <h3 className="section-label px-1">Live now</h3>
-              <div className="grid gap-2">
+              <div className="grid gap-1">
                 {visibleStreams.map((stream) => (
                   <button
                     key={stream.id}
-                    className="flex flex-col gap-0.5 w-full text-left p-2.5 rounded-xl border border-white/5 bg-white/5 hover:bg-white/10 hover:border-primary/40 transition-all group"
+                    className="flex flex-col gap-0.5 w-full text-left p-2 rounded-lg border border-white/[0.05] bg-white/[0.03] hover:bg-white/[0.06] hover:border-primary/30 transition-all group"
                     onClick={() => onSelectRoom(stream.room_id)}
                     type="button"
                   >
-                    <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                      <strong className="text-xs font-semibold truncate group-hover:text-primary transition-colors">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shrink-0" />
+                      <strong className="text-[11px] font-medium truncate group-hover:text-primary transition-colors">
                         {stream.title}
                       </strong>
                     </div>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-[9px] text-muted-foreground/60 pl-3">
                       {roomNameById.get(stream.room_id) ?? stream.room_id}
                     </span>
                   </button>
@@ -122,7 +122,7 @@ export function RoomSidebar({
           )}
 
           {/* Room list */}
-          <div className="space-y-2">
+          <div className="space-y-1">
             <h3 className="section-label px-1">
               {tab === "live"
                 ? "Stream rooms"
@@ -138,25 +138,29 @@ export function RoomSidebar({
                   <button
                     key={room.id}
                     className={cn(
-                      "flex items-center justify-between w-full p-2 rounded-lg border border-transparent text-sm transition-all text-left",
+                      "flex items-center justify-between w-full px-2 py-1.5 rounded-md border border-transparent text-xs transition-all text-left",
                       room.id === activeRoomId
-                        ? "bg-primary/15 border-primary/30 text-primary font-medium shadow-[0_0_15px_rgba(245,122,77,0.1)]"
-                        : "hover:bg-white/5 text-muted-foreground hover:text-foreground",
+                        ? "bg-primary/10 border-primary/20 text-primary font-medium"
+                        : "hover:bg-white/[0.04] text-muted-foreground hover:text-foreground",
                     )}
                     onClick={() => onSelectRoom(room.id)}
                     type="button"
                   >
-                    <div className="flex items-center gap-2">
-                      {room.kind === "text" && <MessageSquare size={14} className="opacity-50" />}
-                      {room.kind === "video" && <Video size={14} className="opacity-50" />}
-                      {room.kind === "stream" && <Radio size={14} className="opacity-50" />}
-                      {room.kind === "voice" && <Hash size={14} className="opacity-50" />}
-                      <span>{room.name}</span>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {room.kind === "text" && (
+                        <MessageSquare size={12} className="opacity-40 shrink-0" />
+                      )}
+                      {room.kind === "video" && <Video size={12} className="opacity-40 shrink-0" />}
+                      {room.kind === "stream" && (
+                        <Radio size={12} className="opacity-40 shrink-0" />
+                      )}
+                      {room.kind === "voice" && <Hash size={12} className="opacity-40 shrink-0" />}
+                      <span className="truncate">{room.name}</span>
                     </div>
                     {liveRoomIds.has(room.id) && (
                       <Badge
                         variant="outline"
-                        className="h-4 px-1.5 text-[10px] border-red-500/50 text-red-500 bg-red-500/10"
+                        className="h-3.5 px-1 text-[8px] border-red-500/40 text-red-400 bg-red-500/10 shrink-0"
                       >
                         LIVE
                       </Badge>
@@ -165,53 +169,48 @@ export function RoomSidebar({
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground px-1">No rooms here yet.</p>
+              <p className="text-[10px] text-muted-foreground/50 px-1">No rooms here yet.</p>
             )}
           </div>
         </div>
       </ScrollArea>
 
       {/* Create room */}
-      <div className="pt-2 border-t border-white/5">
+      <div className="pt-1.5 border-t border-white/[0.05]">
         {!createOpen ? (
           <Button
-            variant="outline"
-            aria-label="+ New room"
-            className="w-full justify-start gap-2 border-dashed border-white/10 bg-transparent text-muted-foreground hover:text-foreground hover:border-primary/50"
+            variant="ghost"
+            size="sm"
+            aria-label="New room"
+            className="w-full h-7 justify-start gap-1.5 text-[10px] text-muted-foreground/60 hover:text-muted-foreground hover:bg-white/[0.04] border border-dashed border-white/[0.07] hover:border-white/10"
             onClick={() => setCreateOpen(true)}
           >
-            <Plus size={16} />
+            <Plus size={12} />
             New room
           </Button>
         ) : (
           <form
-            className="grid gap-3 p-3 rounded-xl bg-white/5 border border-white/10"
+            className="grid gap-2 p-2.5 rounded-lg bg-white/[0.03] border border-white/[0.07]"
             onSubmit={(e) => {
               onCreateRoom(e);
               setCreateOpen(false);
             }}
           >
-            <div className="grid gap-1.5">
-              <label
-                htmlFor="room-name-input"
-                className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold"
-              >
+            <div className="grid gap-1">
+              <label htmlFor="room-name-input" className="section-label">
                 Name
               </label>
               <Input
                 id="room-name-input"
                 autoFocus
-                className="h-8 text-sm bg-black/40 border-white/10 focus-visible:ring-primary/50"
+                className="h-7 text-xs bg-black/30 border-white/[0.08] focus-visible:ring-primary/40"
                 onChange={(e) => onRoomNameDraftChange(e.target.value)}
                 placeholder="Room name"
                 value={roomNameDraft}
               />
             </div>
-            <div className="grid gap-1.5">
-              <label
-                htmlFor="room-kind-select"
-                className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold"
-              >
+            <div className="grid gap-1">
+              <label htmlFor="room-kind-select" className="section-label">
                 Type
               </label>
               <Select
@@ -220,30 +219,30 @@ export function RoomSidebar({
               >
                 <SelectTrigger
                   id="room-kind-select"
-                  className="h-8 text-sm bg-black/40 border-white/10 focus-visible:ring-primary/50"
+                  className="h-7 text-xs bg-black/30 border-white/[0.08] focus-visible:ring-primary/40"
                 >
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
-                <SelectContent className="bg-card border-white/10">
+                <SelectContent className="bg-card border-white/[0.08]">
                   {ROOM_KINDS.map((kind) => (
-                    <SelectItem key={kind} value={kind} className="text-sm">
+                    <SelectItem key={kind} value={kind} className="text-xs">
                       {kind.charAt(0).toUpperCase() + kind.slice(1)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex gap-2 pt-1">
+            <div className="flex gap-1.5">
               <Button
                 variant="ghost"
                 size="sm"
-                className="flex-1 h-8 text-xs"
+                className="flex-1 h-7 text-[10px]"
                 onClick={() => setCreateOpen(false)}
                 type="button"
               >
                 Cancel
               </Button>
-              <Button size="sm" className="flex-1 h-8 text-xs font-bold" type="submit">
+              <Button size="sm" className="flex-1 h-7 text-[10px] font-semibold" type="submit">
                 Create
               </Button>
             </div>
