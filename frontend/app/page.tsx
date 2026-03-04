@@ -508,6 +508,8 @@ export default function Home() {
       setStreamLocalMedia(null);
       setStreamObsConfig(null);
       setStreamPlaybackUrl(null);
+      setHostedStreamId(null);
+      setKnownStreamHostId(null);
     }
   }
 
@@ -646,10 +648,23 @@ export default function Home() {
       return;
     }
 
-    fetch(`${HTTP_BASE}/api/messages?room_id=${encodeURIComponent(activeRoomId)}`)
+    const controller = new AbortController();
+
+    fetch(`${HTTP_BASE}/api/messages?room_id=${encodeURIComponent(activeRoomId)}`, {
+      signal: controller.signal,
+    })
       .then((response) => response.json())
       .then((payload: ChatMessage[]) => setMessages(payload))
-      .catch(() => setMessages([]));
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        setMessages([]);
+      });
+
+    return () => {
+      controller.abort();
+    };
   }, [activeRoomId]);
 
   useEffect(() => {
@@ -995,30 +1010,36 @@ export default function Home() {
     setDraft("");
   }
 
-  async function submitCreateRoom(event: FormEvent<HTMLFormElement>): Promise<void> {
+  async function submitCreateRoom(event: FormEvent<HTMLFormElement>): Promise<boolean> {
     event.preventDefault();
 
     const name = roomNameDraft.trim();
     if (!name) {
-      return;
+      return false;
     }
 
-    const response = await fetch(`${HTTP_BASE}/api/rooms`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, kind: roomKindDraft }),
-    });
+    try {
+      const response = await fetch(`${HTTP_BASE}/api/rooms`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, kind: roomKindDraft }),
+      });
 
-    if (!response.ok) {
+      if (!response.ok) {
+        setStatusNote("Could not create room.");
+        return false;
+      }
+
+      const room = (await response.json()) as Room;
+      setRooms((prev) => [...prev, room]);
+      handleSelectRoom(room.id);
+      setRoomNameDraft("");
+      setStatusNote(`Created ${room.kind} room "${room.name}".`);
+      return true;
+    } catch {
       setStatusNote("Could not create room.");
-      return;
+      return false;
     }
-
-    const room = (await response.json()) as Room;
-    setRooms((prev) => [...prev, room]);
-    handleSelectRoom(room.id);
-    setRoomNameDraft("");
-    setStatusNote(`Created ${room.kind} room "${room.name}".`);
   }
 
   const liveStreams = useMemo(() => streams.filter((stream) => stream.live), [streams]);

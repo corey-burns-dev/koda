@@ -6,6 +6,8 @@ const config_mod = @import("config.zig");
 const store = @import("store.zig");
 const types = @import("types.zig");
 
+const max_signal_payload_len = 16 * 1024;
+
 pub const KodaServer = struct {
     allocator: std.mem.Allocator,
     config: config_mod.Config,
@@ -414,6 +416,10 @@ pub const KodaServer = struct {
         self.state_mutex.lock();
         defer self.state_mutex.unlock();
 
+        if (!self.roomExistsLocked(room_id)) {
+            return error.RoomNotFound;
+        }
+
         var streams = self.app.streamService();
         streams.stopLiveStreamsInRoom(room_id);
         const stream = try streams.startStream(
@@ -432,10 +438,12 @@ pub const KodaServer = struct {
         const token = extractBearerToken(request) orelse return error.InvalidToken;
 
         self.state_mutex.lock();
-        const valid = self.validateTokenLocked(token) != null;
+        const maybe_uid = self.validateTokenLocked(token);
+        const auth_user_id = if (maybe_uid) |uid| try self.allocator.dupe(u8, uid) else null;
         self.state_mutex.unlock();
 
-        if (!valid) return error.InvalidToken;
+        const user_id = auth_user_id orelse return error.InvalidToken;
+        defer self.allocator.free(user_id);
 
         const body = try self.readBody(request, 32 * 1024);
         defer self.allocator.free(body);
@@ -453,13 +461,15 @@ pub const KodaServer = struct {
         self.state_mutex.lock();
         defer self.state_mutex.unlock();
 
-        var streams = self.app.streamService();
-        try streams.stopStream(stream_id);
-        self.notifyUpdate();
-
-        for (self.app.state.streams.items) |stream| {
+        for (self.app.state.streams.items) |*stream| {
             if (std.mem.eql(u8, stream.id, stream_id)) {
-                return try self.buildStreamJson(stream, false);
+                if (!std.mem.eql(u8, stream.host_user_id, user_id)) {
+                    return error.UnauthorizedUser;
+                }
+
+                stream.live = false;
+                self.notifyUpdate();
+                return try self.buildStreamJson(stream.*, false);
             }
         }
 
@@ -491,6 +501,13 @@ pub const KodaServer = struct {
 
         const room_id = try self.allocator.dupe(u8, room_param);
         defer self.allocator.free(room_id);
+
+        self.state_mutex.lock();
+        const room_exists = self.roomExistsLocked(room_id);
+        self.state_mutex.unlock();
+        if (!room_exists) {
+            return self.respondText(request, .not_found, "room not found");
+        }
 
         // Resolve the user_id from the session token.
         // Chat requires a valid token; signal falls back to "guest" for unauthenticated viewers.
@@ -638,6 +655,10 @@ pub const KodaServer = struct {
         self.state_mutex.lock();
         defer self.state_mutex.unlock();
 
+        if (!self.roomExistsLocked(room_id)) {
+            return error.RoomNotFound;
+        }
+
         var chat = self.app.chatService();
         const message = try chat.sendMessage(room_id, user_id, body);
         self.notifyUpdate();
@@ -645,6 +666,10 @@ pub const KodaServer = struct {
     }
 
     fn appendSignalEvent(self: *KodaServer, room_id: []const u8, user_id: []const u8, payload: []const u8) !store.SignalEvent {
+        if (!(try isValidSignalPayloadJson(self.allocator, payload))) {
+            return error.InvalidSignalPayload;
+        }
+
         self.state_mutex.lock();
         defer self.state_mutex.unlock();
 
@@ -895,11 +920,14 @@ pub const KodaServer = struct {
             error.InvalidStreamStart => self.respondText(request, .bad_request, "room_id and title are required"),
             error.InvalidObsConfig => self.respondText(request, .bad_request, "provide both OBS server and stream key (valid RTMP URL and key format)"),
             error.InvalidStreamId => self.respondText(request, .bad_request, "stream_id is required"),
+            error.InvalidSignalPayload => self.respondText(request, .bad_request, "invalid signal payload"),
             error.UsernameTaken => self.respondText(request, .conflict, "username already taken"),
             error.EmailTaken => self.respondText(request, .conflict, "email already registered"),
+            error.RoomNotFound => self.respondText(request, .not_found, "room not found"),
             error.StreamNotFound => self.respondText(request, .not_found, "stream not found"),
             error.InvalidPassword, error.UserNotFound => self.respondText(request, .unauthorized, "invalid email or password"),
-            error.InvalidToken, error.UnauthorizedUser => self.respondText(request, .unauthorized, "invalid or expired session"),
+            error.InvalidToken => self.respondText(request, .unauthorized, "invalid or expired session"),
+            error.UnauthorizedUser => self.respondText(request, .forbidden, "not allowed to perform this action"),
             error.MissingContentLength => self.respondText(request, .length_required, "content-length header is required"),
             error.BodyTooLarge => self.respondText(request, .payload_too_large, "request body too large"),
             else => self.respondText(request, .internal_server_error, "internal server error"),
@@ -940,6 +968,10 @@ pub const KodaServer = struct {
             }
         }
         return user_id;
+    }
+
+    fn roomExistsLocked(self: *KodaServer, room_id: []const u8) bool {
+        return roomExists(self.app.state.rooms.items, room_id);
     }
 };
 
@@ -1036,6 +1068,124 @@ fn queryValue(query: ?[]const u8, key: []const u8) ?[]const u8 {
     return null;
 }
 
+fn isValidSignalPayloadJson(allocator: std.mem.Allocator, payload: []const u8) !bool {
+    if (payload.len == 0 or payload.len > max_signal_payload_len) {
+        return false;
+    }
+
+    var parsed = std.json.parseFromSlice(std.json.Value, allocator, payload, .{}) catch |err| switch (err) {
+        error.OutOfMemory => return err,
+        else => return false,
+    };
+    defer parsed.deinit();
+
+    return isValidSignalPayloadValue(parsed.value);
+}
+
+fn isValidSignalPayloadValue(value: std.json.Value) bool {
+    const object = switch (value) {
+        .object => |obj| obj,
+        else => return false,
+    };
+
+    const kind = switch (object.get("kind") orelse return false) {
+        .string => |s| s,
+        else => return false,
+    };
+    const mode = switch (object.get("mode") orelse return false) {
+        .string => |s| s,
+        else => return false,
+    };
+
+    if (!isAllowedSignalMode(mode)) {
+        return false;
+    }
+
+    if (object.get("target_user_id")) |target_user_id| {
+        switch (target_user_id) {
+            .string => |uid| {
+                if (uid.len == 0) return false;
+            },
+            else => return false,
+        }
+    }
+
+    if (std.mem.eql(u8, kind, "peer.announce") or std.mem.eql(u8, kind, "peer.leave")) {
+        const role = switch (object.get("role") orelse return false) {
+            .string => |s| s,
+            else => return false,
+        };
+        return isAllowedSignalRole(mode, role);
+    }
+
+    if (std.mem.eql(u8, kind, "webrtc.offer") or std.mem.eql(u8, kind, "webrtc.answer")) {
+        return hasSignalObjectField(object, "description") and hasRequiredTargetUserId(object);
+    }
+
+    if (std.mem.eql(u8, kind, "webrtc.ice")) {
+        return hasSignalObjectField(object, "candidate") and hasRequiredTargetUserId(object);
+    }
+
+    if (std.mem.eql(u8, kind, "stream.status")) {
+        if (!std.mem.eql(u8, mode, "stream")) return false;
+        _ = switch (object.get("is_live") orelse return false) {
+            .bool => true,
+            else => return false,
+        };
+
+        if (object.get("title")) |title| {
+            switch (title) {
+                .string => {},
+                else => return false,
+            }
+        }
+        return true;
+    }
+
+    return false;
+}
+
+fn hasRequiredTargetUserId(object: std.json.ObjectMap) bool {
+    const target = object.get("target_user_id") orelse return false;
+    return switch (target) {
+        .string => |uid| uid.len > 0,
+        else => false,
+    };
+}
+
+fn hasSignalObjectField(object: std.json.ObjectMap, key: []const u8) bool {
+    const value = object.get(key) orelse return false;
+    return switch (value) {
+        .object => true,
+        else => false,
+    };
+}
+
+fn isAllowedSignalMode(mode: []const u8) bool {
+    return std.mem.eql(u8, mode, "stream") or std.mem.eql(u8, mode, "video");
+}
+
+fn isAllowedSignalRole(mode: []const u8, role: []const u8) bool {
+    if (std.mem.eql(u8, mode, "stream")) {
+        return std.mem.eql(u8, role, "host") or std.mem.eql(u8, role, "viewer");
+    }
+
+    if (std.mem.eql(u8, mode, "video")) {
+        return std.mem.eql(u8, role, "participant");
+    }
+
+    return false;
+}
+
+fn roomExists(rooms: []const store.Room, room_id: []const u8) bool {
+    for (rooms) |room| {
+        if (std.mem.eql(u8, room.id, room_id)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 fn parseRoomKind(raw: []const u8) types.RoomKind {
     if (std.ascii.eqlIgnoreCase(raw, "voice")) return .voice;
     if (std.ascii.eqlIgnoreCase(raw, "video")) return .video;
@@ -1113,6 +1263,52 @@ test "queryValue finds key values and handles missing keys" {
     try std.testing.expectEqualStrings("", queryValue(query, "empty").?);
     try std.testing.expectEqualStrings("", queryValue(query, "flag").?);
     try std.testing.expect(queryValue(query, "missing") == null);
+}
+
+test "roomExists returns true only for known room ids" {
+    const rooms = [_]store.Room{
+        .{ .id = "room-1", .name = "General", .kind = .text },
+        .{ .id = "room-2", .name = "Stage", .kind = .stream },
+    };
+
+    try std.testing.expect(roomExists(&rooms, "room-1"));
+    try std.testing.expect(roomExists(&rooms, "room-2"));
+    try std.testing.expect(!roomExists(&rooms, "room-404"));
+}
+
+test "isValidSignalPayloadJson accepts supported signal payload schemas" {
+    const valid_payloads = [_][]const u8{
+        "{\"kind\":\"peer.announce\",\"mode\":\"stream\",\"role\":\"host\"}",
+        "{\"kind\":\"peer.leave\",\"mode\":\"video\",\"role\":\"participant\"}",
+        "{\"kind\":\"webrtc.offer\",\"mode\":\"stream\",\"target_user_id\":\"user-2\",\"description\":{\"type\":\"offer\",\"sdp\":\"abc\"}}",
+        "{\"kind\":\"webrtc.answer\",\"mode\":\"video\",\"target_user_id\":\"user-2\",\"description\":{\"type\":\"answer\",\"sdp\":\"abc\"}}",
+        "{\"kind\":\"webrtc.ice\",\"mode\":\"video\",\"target_user_id\":\"user-2\",\"candidate\":{\"candidate\":\"x\",\"sdpMid\":\"0\",\"sdpMLineIndex\":0}}",
+        "{\"kind\":\"stream.status\",\"mode\":\"stream\",\"is_live\":true,\"title\":\"Live\"}",
+    };
+
+    for (valid_payloads) |payload| {
+        try std.testing.expect(try isValidSignalPayloadJson(std.testing.allocator, payload));
+    }
+}
+
+test "isValidSignalPayloadJson rejects malformed and unsupported payloads" {
+    const invalid_payloads = [_][]const u8{
+        "",
+        "not-json",
+        "{}",
+        "{\"kind\":\"peer.announce\",\"mode\":\"video\",\"role\":\"viewer\"}",
+        "{\"kind\":\"peer.leave\",\"mode\":\"stream\",\"role\":\"participant\"}",
+        "{\"kind\":\"webrtc.offer\",\"mode\":\"stream\",\"target_user_id\":\"user-2\"}",
+        "{\"kind\":\"webrtc.answer\",\"mode\":\"video\",\"target_user_id\":\"\",\"description\":{}}",
+        "{\"kind\":\"webrtc.ice\",\"mode\":\"video\",\"target_user_id\":\"user-2\",\"candidate\":\"bad\"}",
+        "{\"kind\":\"stream.status\",\"mode\":\"video\",\"is_live\":true}",
+        "{\"kind\":\"stream.status\",\"mode\":\"stream\",\"is_live\":\"yes\"}",
+        "{\"kind\":\"unknown\",\"mode\":\"stream\"}",
+    };
+
+    for (invalid_payloads) |payload| {
+        try std.testing.expect(!(try isValidSignalPayloadJson(std.testing.allocator, payload)));
+    }
 }
 
 test "parseRoomKind is case-insensitive and defaults to text" {

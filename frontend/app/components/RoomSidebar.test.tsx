@@ -27,7 +27,10 @@ function renderSidebar(overrides?: Partial<ComponentProps<typeof RoomSidebar>>) 
     <RoomSidebar
       activeRoomId="room-text"
       liveStreams={liveStreams}
-      onCreateRoom={(event: FormEvent<HTMLFormElement>) => event.preventDefault()}
+      onCreateRoom={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        return true;
+      }}
       onRoomKindDraftChange={() => {}}
       onRoomNameDraftChange={() => {}}
       onSelectRoom={() => {}}
@@ -55,7 +58,10 @@ function rerenderSidebar(
     <RoomSidebar
       activeRoomId="room-text"
       liveStreams={liveStreams}
-      onCreateRoom={(event: FormEvent<HTMLFormElement>) => event.preventDefault()}
+      onCreateRoom={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        return true;
+      }}
       onRoomKindDraftChange={() => {}}
       onRoomNameDraftChange={() => {}}
       onSelectRoom={() => {}}
@@ -95,7 +101,10 @@ describe("RoomSidebar", () => {
 
   it("emits create-room callbacks from the form", async () => {
     const user = userEvent.setup();
-    const onCreateRoom = vi.fn((event: FormEvent<HTMLFormElement>) => event.preventDefault());
+    const onCreateRoom = vi.fn((event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      return true;
+    });
     const onRoomNameDraftChange = vi.fn();
     const onRoomKindDraftChange = vi.fn((value: RoomKind) => value);
 

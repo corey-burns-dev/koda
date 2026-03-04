@@ -31,7 +31,7 @@ const BROWSE_TABS: { id: BrowseTab; label: string; icon: ComponentType<TabIconPr
 type RoomSidebarProps = {
   activeRoomId: string;
   liveStreams: StreamSession[];
-  onCreateRoom: (event: FormEvent<HTMLFormElement>) => void;
+  onCreateRoom: (event: FormEvent<HTMLFormElement>) => Promise<boolean> | boolean;
   onRoomKindDraftChange: (value: RoomKind) => void;
   onRoomNameDraftChange: (value: string) => void;
   onSelectRoom: (roomId: string) => void;
@@ -191,9 +191,16 @@ export function RoomSidebar({
         ) : (
           <form
             className="grid gap-2 p-2.5 rounded-lg bg-white/[0.03] border border-white/[0.07]"
-            onSubmit={(e) => {
-              onCreateRoom(e);
-              setCreateOpen(false);
+            onSubmit={(event) => {
+              Promise.resolve(onCreateRoom(event))
+                .then((created) => {
+                  if (created) {
+                    setCreateOpen(false);
+                  }
+                })
+                .catch(() => {
+                  // Keep the form open if create-room fails.
+                });
             }}
           >
             <div className="grid gap-1">
