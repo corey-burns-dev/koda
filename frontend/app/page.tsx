@@ -2,7 +2,8 @@
 
 import Hls from "hls.js";
 import { Hash, MessageSquare, Radio, Video as VideoIcon } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { AuthModal } from "./components/AuthModal";
@@ -14,7 +15,7 @@ import { TopNav } from "./components/TopNav";
 import { VideoExperience } from "./components/VideoExperience";
 import { usePersistentUser } from "./hooks/usePersistentUser";
 
-import {
+import type {
   BrowseTab,
   ChatEvent,
   ChatMessage,
@@ -27,8 +28,6 @@ import {
   StreamStartResponse,
 } from "./types";
 
-const HTTP_BASE = process.env.NEXT_PUBLIC_BACKEND_HTTP_URL ?? "http://localhost:8080";
-const WS_BASE = process.env.NEXT_PUBLIC_BACKEND_WS_URL ?? "ws://localhost:8080";
 const ICE_SERVERS: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -69,6 +68,28 @@ export default function Home() {
   const userId = user?.id ?? "";
   const sessionToken = user?.token ?? "";
 
+  const { http: HTTP_BASE, ws: WS_BASE } = useMemo(() => {
+    const DEFAULT_BACKEND_PORT = "8080";
+    if (typeof window === "undefined") {
+      return {
+        http:
+          process.env.NEXT_PUBLIC_BACKEND_HTTP_URL ?? `http://localhost:${DEFAULT_BACKEND_PORT}`,
+        ws: process.env.NEXT_PUBLIC_BACKEND_WS_URL ?? `ws://localhost:${DEFAULT_BACKEND_PORT}`,
+      };
+    }
+    const hostname = window.location.hostname;
+    const httpProtocol = window.location.protocol === "https:" ? "https:" : "http:";
+    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return {
+      http:
+        process.env.NEXT_PUBLIC_BACKEND_HTTP_URL ??
+        `${httpProtocol}//${hostname}:${DEFAULT_BACKEND_PORT}`,
+      ws:
+        process.env.NEXT_PUBLIC_BACKEND_WS_URL ??
+        `${wsProtocol}//${hostname}:${DEFAULT_BACKEND_PORT}`,
+    };
+  }, []);
+
   const chatSocketRef = useRef<WebSocket | null>(null);
   const signalSocketRef = useRef<WebSocket | null>(null);
 
@@ -88,6 +109,13 @@ export default function Home() {
   const knownStreamHostIdRef = useRef<string | null>(null);
   const videoLocalMediaRef = useRef<MediaStream | null>(null);
   const videoJoinedRef = useRef<boolean>(false);
+  const resetRoomRealtimeStateRef = useRef<(() => void) | null>(null);
+  const handleStreamSignalRef = useRef<
+    ((fromUserId: string, payload: SignalPayload) => Promise<void>) | null
+  >(null);
+  const handleVideoSignalRef = useRef<
+    ((fromUserId: string, payload: SignalPayload) => Promise<void>) | null
+  >(null);
 
   const [health, setHealth] = useState<Health | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -126,6 +154,70 @@ export default function Home() {
     () => rooms.find((room) => room.id === activeRoomId) ?? null,
     [rooms, activeRoomId],
   );
+
+  const buildWsUrl = useCallback(
+    (pathname: string, params: Record<string, string>): string => {
+      const base = WS_BASE.endsWith("/") ? WS_BASE : `${WS_BASE}/`;
+      const url = new URL(pathname, base);
+      for (const [key, value] of Object.entries(params)) {
+        url.searchParams.set(key, value);
+      }
+      return url.toString();
+    },
+    [WS_BASE],
+  );
+
+  const probeSessionToken = useCallback(async (): Promise<"valid" | "invalid" | "unreachable"> => {
+    if (!sessionToken) {
+      return "invalid";
+    }
+
+    try {
+      const response = await fetch(`${HTTP_BASE}/api/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionToken}`,
+        },
+        body: JSON.stringify({
+          room_id: "",
+          body: "",
+        }),
+      });
+
+      if (response.status === 401) {
+        return "invalid";
+      }
+
+      return "valid";
+    } catch {
+      return "unreachable";
+    }
+  }, [HTTP_BASE, sessionToken]);
+
+  const resolvedStreamPlaybackUrl = useMemo(() => {
+    if (!streamPlaybackUrl || typeof window === "undefined") {
+      return streamPlaybackUrl;
+    }
+
+    if (/^https?:\/\//i.test(streamPlaybackUrl)) {
+      return streamPlaybackUrl;
+    }
+
+    if (streamPlaybackUrl.startsWith("//")) {
+      return `${window.location.protocol}${streamPlaybackUrl}`;
+    }
+
+    if (streamPlaybackUrl.startsWith(":")) {
+      return `${window.location.protocol}//${window.location.hostname}${streamPlaybackUrl}`;
+    }
+
+    if (streamPlaybackUrl.startsWith("/")) {
+      return `${window.location.origin}${streamPlaybackUrl}`;
+    }
+
+    return streamPlaybackUrl;
+  }, [streamPlaybackUrl]);
 
   useEffect(() => {
     streamLocalMediaRef.current = streamLocalMedia;
@@ -213,7 +305,7 @@ export default function Home() {
     } catch {
       setHealth(null);
     }
-  }, []);
+  }, [HTTP_BASE]);
 
   const fetchRooms = useCallback(async (): Promise<void> => {
     try {
@@ -235,7 +327,7 @@ export default function Home() {
       setRooms([]);
       setActiveRoomId("");
     }
-  }, []);
+  }, [HTTP_BASE]);
 
   const fetchStreams = useCallback(async (): Promise<void> => {
     try {
@@ -245,7 +337,7 @@ export default function Home() {
     } catch {
       setStreams([]);
     }
-  }, []);
+  }, [HTTP_BASE]);
 
   useEffect(() => {
     void fetchHealth();
@@ -312,14 +404,14 @@ export default function Home() {
     });
   }
 
-  function sendSignal(payload: SignalPayload): void {
+  const sendSignal = useCallback((payload: SignalPayload): void => {
     const socket = signalSocketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       return;
     }
 
     socket.send(JSON.stringify(payload));
-  }
+  }, []);
 
   function makePeerConnection(
     mode: "stream" | "video",
@@ -626,6 +718,8 @@ export default function Home() {
     leaveVideoRoom(false);
   }
 
+  resetRoomRealtimeStateRef.current = resetRoomRealtimeState;
+
   function handleSelectRoom(nextRoomId: string): void {
     if (nextRoomId === activeRoomId) {
       return;
@@ -637,9 +731,8 @@ export default function Home() {
 
   useEffect(() => {
     return () => {
-      resetRoomRealtimeState();
+      resetRoomRealtimeStateRef.current?.();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -665,48 +758,140 @@ export default function Home() {
     return () => {
       controller.abort();
     };
-  }, [activeRoomId]);
+  }, [activeRoomId, HTTP_BASE]);
 
   useEffect(() => {
     if (!activeRoomId || !hydrated || !isAuthenticated || !userId || !sessionToken) {
-      chatSocketRef.current = null;
+      if (chatSocketRef.current) {
+        chatSocketRef.current.close();
+        chatSocketRef.current = null;
+      }
       setChatSocketState(hydrated && !isAuthenticated ? "login required" : "disconnected");
       return;
     }
 
-    const socket = new WebSocket(
-      `${WS_BASE}/ws/chat?room_id=${encodeURIComponent(activeRoomId)}&token=${encodeURIComponent(sessionToken)}`,
-    );
+    let socket: WebSocket | null = null;
+    let cancelled = false;
+    let reconnectTimer: number | null = null;
+    let reconnectAttempt = 0;
 
-    socket.onopen = () => setChatSocketState("connected");
-    socket.onclose = () => setChatSocketState("disconnected");
-    socket.onerror = () => setChatSocketState("error");
-    socket.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data) as ChatEvent;
-        if (payload.type !== "chat.message") {
-          return;
-        }
-
-        if (payload.message.room_id !== activeRoomId) {
-          return;
-        }
-
-        setMessages((prev) => [...prev, payload.message]);
-      } catch {
-        // Ignore malformed payloads.
+    const scheduleReconnect = () => {
+      if (cancelled || reconnectTimer !== null) {
+        return;
       }
+
+      const delayMs = Math.min(1000 * 2 ** reconnectAttempt, 5000);
+      reconnectAttempt += 1;
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        connect();
+      }, delayMs);
     };
 
-    chatSocketRef.current = socket;
+    const connect = () => {
+      if (cancelled) {
+        return;
+      }
+
+      const currentSocket = new WebSocket(
+        buildWsUrl("/ws/chat", {
+          room_id: activeRoomId,
+          token: sessionToken,
+        }),
+      );
+      socket = currentSocket;
+      let opened = false;
+
+      currentSocket.onopen = () => {
+        opened = true;
+        reconnectAttempt = 0;
+        setChatSocketState("connected");
+      };
+
+      currentSocket.onerror = () => {
+        if (!opened) {
+          setChatSocketState("error");
+        }
+      };
+
+      currentSocket.onclose = () => {
+        if (chatSocketRef.current === currentSocket) {
+          chatSocketRef.current = null;
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        if (opened) {
+          setChatSocketState("disconnected");
+          scheduleReconnect();
+          return;
+        }
+
+        setChatSocketState("error");
+        void probeSessionToken().then((status) => {
+          if (cancelled) {
+            return;
+          }
+
+          if (status === "invalid") {
+            clearUser();
+            setStatusNote("Session expired. Sign in again.");
+            setAuthOpen(true);
+            setChatSocketState("login required");
+            return;
+          }
+
+          scheduleReconnect();
+        });
+      };
+
+      currentSocket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data) as ChatEvent;
+          if (payload.type !== "chat.message") {
+            return;
+          }
+
+          if (payload.message.room_id !== activeRoomId) {
+            return;
+          }
+
+          setMessages((prev) => [...prev, payload.message]);
+        } catch {
+          // Ignore malformed payloads.
+        }
+      };
+
+      chatSocketRef.current = currentSocket;
+    };
+
+    setChatSocketState("connecting");
+    connect();
 
     return () => {
+      cancelled = true;
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+      }
+      if (socket) {
+        socket.close();
+      }
       if (chatSocketRef.current === socket) {
         chatSocketRef.current = null;
       }
-      socket.close();
     };
-  }, [activeRoomId, hydrated, isAuthenticated, userId, sessionToken]);
+  }, [
+    activeRoomId,
+    hydrated,
+    isAuthenticated,
+    userId,
+    sessionToken,
+    buildWsUrl,
+    probeSessionToken,
+    clearUser,
+  ]);
 
   async function handleStreamSignal(fromUserId: string, payload: SignalPayload): Promise<void> {
     if (payload.mode !== "stream") {
@@ -867,15 +1052,37 @@ export default function Home() {
     }
   }
 
+  handleStreamSignalRef.current = handleStreamSignal;
+  handleVideoSignalRef.current = handleVideoSignal;
+
   useEffect(() => {
-    if (!activeRoomId || !hydrated || !isAuthenticated || !userId || !sessionToken) {
-      signalSocketRef.current = null;
-      setSignalSocketState(hydrated && !isAuthenticated ? "login required" : "disconnected");
+    const shouldOpenSignal = activeRoom?.kind === "stream" || activeRoom?.kind === "video";
+
+    if (
+      !activeRoomId ||
+      !shouldOpenSignal ||
+      !hydrated ||
+      !isAuthenticated ||
+      !userId ||
+      !sessionToken
+    ) {
+      if (signalSocketRef.current) {
+        signalSocketRef.current.close();
+        signalSocketRef.current = null;
+      }
+      if (!activeRoomId || !shouldOpenSignal) {
+        setSignalSocketState("disconnected");
+      } else {
+        setSignalSocketState(hydrated && !isAuthenticated ? "login required" : "disconnected");
+      }
       return;
     }
 
     const socket = new WebSocket(
-      `${WS_BASE}/ws/signal?room_id=${encodeURIComponent(activeRoomId)}&token=${encodeURIComponent(sessionToken)}`,
+      buildWsUrl("/ws/signal", {
+        room_id: activeRoomId,
+        token: sessionToken,
+      }),
     );
 
     socket.onopen = () => {
@@ -916,13 +1123,15 @@ export default function Home() {
         }
 
         if (parsedPayload.mode === "stream" && activeRoom?.kind === "stream") {
-          handleStreamSignal(fromUserId, parsedPayload).catch(() => {
+          const streamSignalPromise = handleStreamSignalRef.current?.(fromUserId, parsedPayload);
+          streamSignalPromise?.catch(() => {
             // Ignore transient signaling failures.
           });
         }
 
         if (parsedPayload.mode === "video" && activeRoom?.kind === "video") {
-          handleVideoSignal(fromUserId, parsedPayload).catch(() => {
+          const videoSignalPromise = handleVideoSignalRef.current?.(fromUserId, parsedPayload);
+          videoSignalPromise?.catch(() => {
             // Ignore transient signaling failures.
           });
         }
@@ -939,8 +1148,16 @@ export default function Home() {
       }
       socket.close();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRoomId, activeRoom?.kind, hydrated, isAuthenticated, userId, sessionToken]);
+  }, [
+    activeRoomId,
+    activeRoom?.kind,
+    hydrated,
+    isAuthenticated,
+    userId,
+    sessionToken,
+    buildWsUrl,
+    sendSignal,
+  ]);
 
   useEffect(() => {
     const element = streamRemoteVideoRef.current;
@@ -948,7 +1165,7 @@ export default function Home() {
       return;
     }
 
-    if (!streamPlaybackUrl) {
+    if (!resolvedStreamPlaybackUrl) {
       element.pause();
       element.removeAttribute("src");
       element.load();
@@ -958,7 +1175,7 @@ export default function Home() {
     let hls: Hls | null = null;
 
     if (element.canPlayType("application/vnd.apple.mpegurl")) {
-      element.src = streamPlaybackUrl;
+      element.src = resolvedStreamPlaybackUrl;
       element.play().catch(() => {
         // Ignore autoplay restrictions.
       });
@@ -966,7 +1183,7 @@ export default function Home() {
       hls = new Hls({
         lowLatencyMode: true,
       });
-      hls.loadSource(streamPlaybackUrl);
+      hls.loadSource(resolvedStreamPlaybackUrl);
       hls.attachMedia(element);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         element.play().catch(() => {
@@ -985,7 +1202,7 @@ export default function Home() {
       element.removeAttribute("src");
       element.load();
     };
-  }, [streamPlaybackUrl]);
+  }, [resolvedStreamPlaybackUrl]);
 
   useEffect(() => {
     if (videoLocalVideoRef.current) {
@@ -995,6 +1212,11 @@ export default function Home() {
 
   function submitMessage(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
+    if (!activeRoomId) {
+      setStatusNote("Pick a room to chat.");
+      return;
+    }
+
     if (!isAuthenticated) {
       setStatusNote("Sign in to chat.");
       setAuthOpen(true);
@@ -1002,12 +1224,42 @@ export default function Home() {
     }
 
     const text = draft.trim();
-    if (!text || !chatSocketRef.current || chatSocketRef.current.readyState !== WebSocket.OPEN) {
+    if (!text) {
       return;
     }
 
-    chatSocketRef.current.send(text);
-    setDraft("");
+    const socket = chatSocketRef.current;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(text);
+      setDraft("");
+      return;
+    }
+
+    fetch(`${HTTP_BASE}/api/messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionToken}`,
+      },
+      body: JSON.stringify({
+        room_id: activeRoomId,
+        body: text,
+      }),
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("failed to send chat message");
+        }
+
+        const payload = (await response.json()) as ChatEvent;
+        if (payload.type === "chat.message") {
+          setMessages((prev) => [...prev, payload.message]);
+        }
+        setDraft("");
+      })
+      .catch(() => {
+        setStatusNote("Could not send message.");
+      });
   }
 
   async function submitCreateRoom(event: FormEvent<HTMLFormElement>): Promise<boolean> {
@@ -1102,7 +1354,7 @@ export default function Home() {
   }
 
   return (
-    <div className="app-shell bg-[#081018] font-sans antialiased text-slate-100">
+    <div className="app-shell antialiased text-foreground">
       <TopNav
         user={user}
         onOpenAuth={() => setAuthOpen(true)}
@@ -1126,15 +1378,15 @@ export default function Home() {
         tab={tab}
       />
 
-      <section className="main-panel">
-        <header className="flex items-center gap-2 pb-2 border-b border-white/[0.05] shrink-0">
-          <h2 className="text-sm font-semibold tracking-tight">
+      <section className="main-panel animate-in" style={{ animationDelay: "150ms" }}>
+        <header className="flex items-center gap-2 pb-2 border-b border-border/40 shrink-0">
+          <h2 className="text-sm font-bold tracking-tight">
             {activeRoom ? activeRoom.name : "Pick a room"}
           </h2>
           {activeRoom && (
             <Badge
               variant="outline"
-              className="h-4 px-1.5 bg-primary/10 border-primary/20 text-primary text-[9px] font-bold uppercase tracking-widest"
+              className="h-4 px-1.5 bg-primary/10 border-primary/20 text-primary text-[9px] font-extrabold uppercase tracking-widest"
             >
               {activeRoom.kind === "text" && <MessageSquare size={10} className="mr-1" />}
               {activeRoom.kind === "video" && <VideoIcon size={10} className="mr-1" />}

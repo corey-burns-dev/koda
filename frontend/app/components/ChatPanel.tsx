@@ -35,27 +35,26 @@ export function ChatPanel({
   }, [messages]);
 
   return (
-    <section className="flex flex-col flex-1 min-h-0">
-      <div className="flex-1 overflow-y-auto rounded-lg border border-white/[0.05] bg-black/20 px-2 py-2">
+    <section className="flex flex-col flex-1 min-h-0 pt-1">
+      <div className="flex-1 overflow-y-auto rounded-xl border border-border/40 bg-muted/20 px-3 py-2.5 shadow-inner">
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full opacity-25">
-            <p className="text-xs italic">No messages yet.</p>
+            <p className="text-xs font-bold uppercase tracking-widest italic">Quiet in here...</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-0">
+          <div className="flex flex-col gap-0.5">
             {messages.map((message) => (
               <div
                 key={message.id}
-                className="group px-1.5 py-0.5 hover:bg-white/[0.03] rounded transition-colors text-xs leading-relaxed"
+                className="group px-2 py-1 hover:bg-primary/5 rounded-lg transition-all text-[13px] leading-snug border border-transparent hover:border-primary/10"
               >
-                <span className="font-semibold text-primary/80 mr-1">
+                <span className="font-bold text-primary mr-1.5 uppercase text-[10px] tracking-wider">
                   {message.username ??
                     (message.user_id === currentUserId && currentUsername
                       ? currentUsername
                       : message.user_id)}
-                  :
                 </span>
-                <span className="text-foreground/80 break-words">{message.body}</span>
+                <span className="text-foreground/90 break-words font-medium">{message.body}</span>
               </div>
             ))}
             <div ref={bottomRef} />
@@ -63,13 +62,13 @@ export function ChatPanel({
         )}
       </div>
 
-      <form className="flex gap-1.5 mt-2 shrink-0" onSubmit={onSubmit}>
+      <form className="flex gap-2 mt-3 shrink-0" onSubmit={onSubmit}>
         <Input
           aria-label="Message"
-          className="flex-1 h-8 text-xs bg-white/[0.04] border-white/[0.08] focus-visible:ring-primary/40 placeholder:text-muted-foreground/40"
+          className="flex-1 h-9 text-xs bg-muted/40 border-border/40 focus-visible:ring-primary/40 placeholder:text-muted-foreground/40 rounded-xl"
           disabled={!canChat}
           onChange={(event) => onDraftChange(event.target.value)}
-          placeholder={canChat ? "Say something…" : "Sign in to chat"}
+          placeholder={canChat ? "Type a message..." : "Sign in to join the conversation"}
           value={draft}
         />
         {canChat ? (
@@ -77,19 +76,19 @@ export function ChatPanel({
             aria-label="Send"
             type="submit"
             size="icon"
-            className="h-8 w-8 shrink-0 bg-primary hover:bg-primary/90"
+            className="h-9 w-9 shrink-0 bg-primary hover:bg-primary/90 rounded-xl shadow-lg shadow-primary/10"
           >
-            <Send size={14} />
+            <Send size={16} />
           </Button>
         ) : (
           <Button
             aria-label="Sign in"
             type="button"
             size="sm"
-            className="h-8 shrink-0 text-xs font-semibold"
+            className="h-9 shrink-0 text-xs font-bold uppercase tracking-widest px-4 rounded-xl"
             onClick={onOpenAuth}
           >
-            Sign in
+            Join
           </Button>
         )}
       </form>

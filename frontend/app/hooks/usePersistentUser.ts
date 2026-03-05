@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import type { AuthUser } from "../types";
 
@@ -50,17 +50,20 @@ export function usePersistentUser(storageKey = USER_STORAGE_KEY) {
     setHydrated(true);
   }, [storageKey]);
 
-  const setUser = (next: AuthUser) => {
-    window.localStorage.setItem(storageKey, JSON.stringify(next));
-    window.localStorage.setItem(USER_ID_STORAGE_KEY, next.id);
-    setUserState(next);
-  };
+  const setUser = useCallback(
+    (next: AuthUser) => {
+      window.localStorage.setItem(storageKey, JSON.stringify(next));
+      window.localStorage.setItem(USER_ID_STORAGE_KEY, next.id);
+      setUserState(next);
+    },
+    [storageKey],
+  );
 
-  const clearUser = () => {
+  const clearUser = useCallback(() => {
     window.localStorage.removeItem(storageKey);
     window.localStorage.removeItem(USER_ID_STORAGE_KEY);
     setUserState(null);
-  };
+  }, [storageKey]);
 
   return { user, hydrated, setUser, clearUser };
 }

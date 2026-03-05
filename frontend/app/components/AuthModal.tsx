@@ -14,14 +14,17 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { AuthUser } from "../types";
 
-const HTTP_BASE = process.env.NEXT_PUBLIC_BACKEND_HTTP_URL ?? "http://localhost:8080";
-
 type AuthModalProps = {
   onClose: () => void;
   onSuccess: (user: AuthUser) => void;
 };
 
 export function AuthModal({ onClose, onSuccess }: AuthModalProps) {
+  const HTTP_BASE =
+    typeof window !== "undefined"
+      ? (process.env.NEXT_PUBLIC_BACKEND_HTTP_URL ?? `http://${window.location.hostname}:8080`)
+      : (process.env.NEXT_PUBLIC_BACKEND_HTTP_URL ?? "http://localhost:8080");
+
   const [tab, setTab] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -81,16 +84,16 @@ export function AuthModal({ onClose, onSuccess }: AuthModalProps) {
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[400px] bg-card border-white/10 shadow-2xl backdrop-blur-xl">
+      <DialogContent className="sm:max-w-[400px] bg-card/95 border-border/40 shadow-2xl backdrop-blur-2xl rounded-2xl animate-in">
         <form onSubmit={handleSubmit}>
           <DialogHeader className="pt-4 px-1">
-            <DialogTitle className="text-2xl font-bold tracking-tight">
-              {tab === "login" ? "Welcome back" : "Create account"}
+            <DialogTitle className="text-2xl font-black tracking-tighter uppercase">
+              {tab === "login" ? "Welcome" : "Join Punch"}
             </DialogTitle>
-            <DialogDescription className="text-muted-foreground/70">
+            <DialogDescription className="text-muted-foreground/70 font-medium text-sm leading-snug">
               {tab === "login"
-                ? "Enter your credentials to access your account."
-                : "Fill in the details below to join the community."}
+                ? "Enter your credentials to access the network."
+                : "Create an account to join the realtime community."}
             </DialogDescription>
           </DialogHeader>
 
@@ -100,31 +103,32 @@ export function AuthModal({ onClose, onSuccess }: AuthModalProps) {
               setTab(v as "login" | "register");
               setError(null);
             }}
-            className="w-full mt-2"
+            className="w-full mt-4"
           >
-            <TabsList className="grid w-full grid-cols-2 bg-black/30 p-1">
+            <TabsList className="grid w-full grid-cols-2 bg-muted/40 p-1 rounded-xl border border-border/40">
               <TabsTrigger
                 value="login"
-                className="data-[state=active]:bg-primary data-[state=active]:text-white"
+                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg font-bold uppercase tracking-wider text-[10px]"
               >
                 Log in
               </TabsTrigger>
               <TabsTrigger
                 value="register"
-                className="data-[state=active]:bg-primary data-[state=active]:text-white"
+                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg font-bold uppercase tracking-wider text-[10px]"
               >
                 Sign up
               </TabsTrigger>
             </TabsList>
 
             <div className="grid gap-4 py-6 px-1">
-              {error && <div className="text-red-500 text-xs font-medium px-1">{error}</div>}
+              {error && (
+                <div className="text-destructive text-[11px] font-bold uppercase tracking-wider bg-destructive/10 p-2.5 rounded-lg border border-destructive/20">
+                  {error}
+                </div>
+              )}
               {tab === "register" && (
-                <div className="grid gap-2">
-                  <label
-                    htmlFor="username"
-                    className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold"
-                  >
+                <div className="grid gap-1.5">
+                  <label htmlFor="username" className="section-label px-0">
                     Username
                   </label>
                   <Input
@@ -135,15 +139,12 @@ export function AuthModal({ onClose, onSuccess }: AuthModalProps) {
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    className="bg-black/20 border-white/10 focus-visible:ring-primary/50 h-11"
+                    className="bg-muted/40 border-border/40 focus-visible:ring-primary/40 h-10 rounded-xl text-sm"
                   />
                 </div>
               )}
-              <div className="grid gap-2">
-                <label
-                  htmlFor="email"
-                  className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold"
-                >
+              <div className="grid gap-1.5">
+                <label htmlFor="email" className="section-label px-0">
                   Email
                 </label>
                 <Input
@@ -154,14 +155,11 @@ export function AuthModal({ onClose, onSuccess }: AuthModalProps) {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="bg-black/20 border-white/10 focus-visible:ring-primary/50 h-11"
+                  className="bg-muted/40 border-border/40 focus-visible:ring-primary/40 h-10 rounded-xl text-sm"
                 />
               </div>
-              <div className="grid gap-2">
-                <label
-                  htmlFor="password"
-                  className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold"
-                >
+              <div className="grid gap-1.5">
+                <label htmlFor="password" className="section-label px-0">
                   Password
                 </label>
                 <Input
@@ -172,15 +170,12 @@ export function AuthModal({ onClose, onSuccess }: AuthModalProps) {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="bg-black/20 border-white/10 focus-visible:ring-primary/50 h-11"
+                  className="bg-muted/40 border-border/40 focus-visible:ring-primary/40 h-10 rounded-xl text-sm"
                 />
               </div>
               {tab === "register" && (
-                <div className="grid gap-2">
-                  <label
-                    htmlFor="confirm-password"
-                    className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold"
-                  >
+                <div className="grid gap-1.5">
+                  <label htmlFor="confirm-password" className="section-label px-0">
                     Confirm Password
                   </label>
                   <Input
@@ -191,28 +186,28 @@ export function AuthModal({ onClose, onSuccess }: AuthModalProps) {
                     required
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="bg-black/20 border-white/10 focus-visible:ring-primary/50 h-11"
+                    className="bg-muted/40 border-border/40 focus-visible:ring-primary/40 h-10 rounded-xl text-sm"
                   />
                 </div>
               )}
             </div>
           </Tabs>
 
-          <DialogFooter className="px-1 pb-2">
+          <DialogFooter className="px-1 pb-2 flex-col sm:flex-row gap-2">
             <Button
               variant="ghost"
               onClick={onClose}
               type="button"
-              className="text-muted-foreground"
+              className="text-muted-foreground font-bold uppercase tracking-wider text-[11px] rounded-xl"
             >
               Cancel
             </Button>
             <Button
               type="submit"
               disabled={loading}
-              className="font-bold px-8 bg-primary hover:bg-primary/90 shadow-[0_0_20px_rgba(245,122,77,0.2)]"
+              className="font-bold uppercase tracking-widest text-[11px] px-8 bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg shadow-primary/20 rounded-xl h-10"
             >
-              {loading ? "Please wait..." : tab === "login" ? "Log in" : "Create account"}
+              {loading ? "Processing..." : tab === "login" ? "Log in" : "Create account"}
             </Button>
           </DialogFooter>
         </form>

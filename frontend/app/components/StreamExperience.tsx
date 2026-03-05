@@ -1,23 +1,19 @@
 import { Check, Copy, Eye, Radio, Search, StopCircle, User } from "lucide-react";
-import { RefObject, useState } from "react";
+import { type RefObject, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { StreamObsConfig } from "../types";
+import type { StreamObsConfig } from "../types";
 
 type StreamExperienceProps = {
   knownStreamHostId: string | null;
   liveStreamTitle: string | null;
   obsConfig: StreamObsConfig | null;
-  obsIngestPreview: string | null;
   obsServerDraft: string;
   obsStreamKeyDraft: string;
   onFindStream: () => void;
-  onObsServerDraftChange: (value: string) => void;
-  onObsStreamKeyDraftChange: (value: string) => void;
-  onStartBroadcast: () => void;
   onStopBroadcast: () => void;
   streamMode: "idle" | "hosting" | "watching";
   streamPlaybackUrl: string | null;
@@ -31,13 +27,9 @@ export function StreamExperience({
   knownStreamHostId,
   liveStreamTitle,
   obsConfig,
-  obsIngestPreview,
   obsServerDraft,
   obsStreamKeyDraft,
   onFindStream,
-  onObsServerDraftChange,
-  onObsStreamKeyDraftChange,
-  onStartBroadcast,
   onStopBroadcast,
   onStreamTitleDraftChange,
   streamMode,
@@ -54,7 +46,6 @@ export function StreamExperience({
     obsServerDraft.trim().length > 0 ? obsServerDraft.trim() : (obsConfig?.server_url ?? "");
   const streamKeyValue =
     obsStreamKeyDraft.trim().length > 0 ? obsStreamKeyDraft.trim() : (obsConfig?.stream_key ?? "");
-  const ingestValue = obsIngestPreview ?? "";
 
   async function handleCopy(value: string, field: "server" | "key" | "ingest"): Promise<void> {
     if (!value) {
@@ -73,199 +64,172 @@ export function StreamExperience({
   }
 
   return (
-    <Card className="bg-black/20 border-white/5 backdrop-blur-sm overflow-hidden">
+    <Card className="bg-card/40 border-border/40 backdrop-blur-xl overflow-hidden rounded-xl shadow-sm animate-in">
       <CardHeader className="flex flex-col gap-3 p-4 pb-1">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-3">
             <div
               className={cn(
-                "p-1.5 rounded-lg",
+                "p-1.5 rounded-lg shadow-sm",
                 hasLiveStream ? "bg-red-500/10 text-red-500" : "bg-primary/10 text-primary",
               )}
             >
               <Radio size={16} className={hasLiveStream ? "animate-pulse" : ""} />
             </div>
-            <CardTitle className="text-base font-bold">
-              {isHosting ? "Live Broadcast (OBS)" : "Stream Discovery"}
+            <CardTitle className="text-base font-bold tracking-tight uppercase tracking-[0.05em]">
+              {isHosting ? "Live Broadcast" : "Stream Discovery"}
             </CardTitle>
           </div>
 
           <div className="flex items-center gap-2">
             <Badge
               variant="outline"
-              className="bg-white/5 text-muted-foreground flex gap-1 items-center border-white/5 h-5 text-[10px]"
+              className="bg-muted/40 text-muted-foreground flex gap-1.5 items-center border-border/40 h-5 text-[9px] font-bold uppercase tracking-wider"
             >
               <User size={10} />
               Host: {knownStreamHostId ? knownStreamHostId.slice(0, 8) : "none"}
             </Badge>
             <Badge
               variant="outline"
-              className="bg-white/5 text-muted-foreground flex gap-1 items-center border-white/5 h-5 text-[10px]"
+              className="bg-primary/5 text-primary flex gap-1.5 items-center border-primary/20 h-5 text-[9px] font-bold uppercase tracking-wider"
             >
               <Eye size={10} />
-              {streamViewerCount} viewers
+              {streamViewerCount} {streamViewerCount === 1 ? "Viewer" : "Viewers"}
             </Badge>
           </div>
         </div>
 
-        <div className="flex gap-2 bg-black/40 p-1.5 rounded-xl border border-white/5">
-          <Input
-            className="flex-1 bg-transparent border-none focus-visible:ring-0 text-xs h-8"
-            onChange={(event) => onStreamTitleDraftChange(event.target.value)}
-            placeholder="Give your stream a title"
-            value={streamTitleDraft}
+        {liveStreamTitle && (
+          <div className="flex items-center gap-1.5 px-0.5">
+            <span className="text-xs font-bold text-foreground truncate">{liveStreamTitle}</span>
+          </div>
+        )}
+      </CardHeader>
+
+      <CardContent className="p-4 pt-2">
+        <div className="relative aspect-video bg-black/40 rounded-xl overflow-hidden border border-border/40 group">
+          <video
+            ref={streamPlaybackVideoRef}
+            className="h-full w-full object-cover"
+            autoPlay
+            playsInline
+            muted={isHosting}
           />
-          <div className="flex gap-1.5">
-            {isHosting ? (
+
+          {!hasLiveStream && !isHosting && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/40 backdrop-blur-[2px] gap-3">
+              <Radio className="h-10 w-10 text-muted-foreground/30" />
+              <div className="text-center px-4">
+                <p className="text-sm font-bold text-muted-foreground/60 uppercase tracking-widest">
+                  Signal is offline
+                </p>
+                <p className="text-[11px] text-muted-foreground/40 font-medium">
+                  Try refreshing if you expect a host.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onFindStream}
+                className="h-8 text-[11px] font-bold uppercase tracking-wider rounded-lg border-border/40 bg-background/50"
+              >
+                <Search size={14} className="mr-1.5" />
+                Refresh
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {isHosting && (
+          <div className="grid gap-3 mt-4 pt-3 border-t border-border/30">
+            <div className="grid gap-1.5">
+              <label htmlFor="streamTitle" className="section-label">
+                Broadcast Details
+              </label>
+              <Input
+                id="streamTitle"
+                placeholder="Set stream title..."
+                value={streamTitleDraft}
+                onChange={(e) => onStreamTitleDraftChange(e.target.value)}
+                className="h-8 text-xs bg-muted/40 border-border/40 focus-visible:ring-primary/40 rounded-lg"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <label htmlFor="obsServer" className="section-label">
+                  OBS Server
+                </label>
+                <div className="flex gap-1.5">
+                  <Input
+                    id="obsServer"
+                    readOnly
+                    value={serverValue}
+                    className="h-8 text-xs bg-muted/30 border-border/30 rounded-lg text-muted-foreground font-mono"
+                  />
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-8 w-8 shrink-0 rounded-lg border-border/30"
+                    onClick={() => handleCopy(serverValue, "server")}
+                  >
+                    {copiedField === "server" ? (
+                      <Check size={14} className="text-emerald-500" />
+                    ) : (
+                      <Copy size={14} />
+                    )}
+                  </Button>
+                </div>
+              </div>
+              <div className="grid gap-1.5">
+                <label htmlFor="obsKey" className="section-label">
+                  OBS Key
+                </label>
+                <div className="flex gap-1.5">
+                  <Input
+                    id="obsKey"
+                    readOnly
+                    type="password"
+                    value={streamKeyValue}
+                    className="h-8 text-xs bg-muted/30 border-border/30 rounded-lg text-muted-foreground font-mono"
+                  />
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-8 w-8 shrink-0 rounded-lg border-border/30"
+                    onClick={() => handleCopy(streamKeyValue, "key")}
+                  >
+                    {copiedField === "key" ? (
+                      <Check size={14} className="text-emerald-500" />
+                    ) : (
+                      <Copy size={14} />
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <div className="flex flex-col">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
+                  Status: Ready to broadcast
+                </p>
+                <p className="text-[10px] text-muted-foreground/40 font-medium">
+                  Connect your encoder to go live.
+                </p>
+              </div>
               <Button
                 variant="destructive"
                 size="sm"
                 onClick={onStopBroadcast}
-                className="gap-1.5 font-bold shadow-lg shadow-red-500/10 h-8 text-[11px]"
+                className="h-8 text-[11px] font-bold uppercase tracking-wider rounded-lg px-4"
               >
-                <StopCircle size={14} />
+                <StopCircle size={14} className="mr-1.5" />
                 Stop
               </Button>
-            ) : (
-              <Button
-                size="sm"
-                onClick={onStartBroadcast}
-                className="gap-1.5 font-bold shadow-lg shadow-primary/10 bg-primary hover:bg-primary/90 h-8 px-3 text-[11px]"
-              >
-                <Radio size={14} />
-                Go Live (OBS)
-              </Button>
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onFindStream}
-              className="h-8 w-8 p-0 border-white/10"
-            >
-              <Search size={14} />
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-
-      <CardContent className="p-4 pt-3">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-          <div className="lg:col-span-3 space-y-2">
-            <h3 className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground px-1">
-              Live Player
-            </h3>
-            <div className="relative aspect-video bg-black/60 rounded-xl border border-white/5 overflow-hidden shadow-2xl group transition-all hover:border-white/10">
-              <video
-                autoPlay
-                className="w-full h-full object-cover"
-                controls
-                muted={isHosting}
-                playsInline
-                ref={streamPlaybackVideoRef}
-              />
-              {!hasLiveStream && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                  <p className="text-xs text-muted-foreground">No live stream in this room yet.</p>
-                </div>
-              )}
-              {hasLiveStream && (
-                <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-red-600/90 text-white animate-pulse shadow-lg">
-                  <Radio size={10} />
-                  <span className="text-[9px] font-black uppercase tracking-tighter">Live</span>
-                </div>
-              )}
             </div>
           </div>
-
-          <div className="space-y-2">
-            <h3 className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground px-1">
-              OBS Setup
-            </h3>
-            <div className="relative rounded-xl border border-white/5 bg-black/40 p-3 space-y-3 text-[10px]">
-              <div>
-                <p className="text-muted-foreground mb-1">Title</p>
-                <p className="font-semibold">{liveStreamTitle ?? streamTitleDraft}</p>
-              </div>
-              <div>
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <p className="text-muted-foreground">Server</p>
-                  <Button
-                    className="h-5 px-1.5 text-[9px] border-white/10"
-                    disabled={!serverValue}
-                    onClick={() => {
-                      handleCopy(serverValue, "server").catch(() => {
-                        // Ignore copy errors.
-                      });
-                    }}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    {copiedField === "server" ? <Check size={10} /> : <Copy size={10} />}
-                    {copiedField === "server" ? "Copied" : "Copy"}
-                  </Button>
-                </div>
-                <Input
-                  className="h-7 text-[10px] font-mono"
-                  onChange={(event) => onObsServerDraftChange(event.target.value)}
-                  placeholder={obsConfig?.server_url ?? "rtmp://localhost:1935/live"}
-                  value={obsServerDraft}
-                />
-              </div>
-              <div>
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <p className="text-muted-foreground">Stream key</p>
-                  <Button
-                    className="h-5 px-1.5 text-[9px] border-white/10"
-                    disabled={!streamKeyValue}
-                    onClick={() => {
-                      handleCopy(streamKeyValue, "key").catch(() => {
-                        // Ignore copy errors.
-                      });
-                    }}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    {copiedField === "key" ? <Check size={10} /> : <Copy size={10} />}
-                    {copiedField === "key" ? "Copied" : "Copy"}
-                  </Button>
-                </div>
-                <Input
-                  className="h-7 text-[10px] font-mono"
-                  onChange={(event) => onObsStreamKeyDraftChange(event.target.value)}
-                  placeholder={obsConfig?.stream_key ?? "Enter stream key"}
-                  value={obsStreamKeyDraft}
-                />
-              </div>
-              <div>
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <p className="text-muted-foreground">Ingest URL</p>
-                  <Button
-                    className="h-5 px-1.5 text-[9px] border-white/10"
-                    disabled={!ingestValue}
-                    onClick={() => {
-                      handleCopy(ingestValue, "ingest").catch(() => {
-                        // Ignore copy errors.
-                      });
-                    }}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    {copiedField === "ingest" ? <Check size={10} /> : <Copy size={10} />}
-                    {copiedField === "ingest" ? "Copied" : "Copy"}
-                  </Button>
-                </div>
-                <p className="font-mono break-all">{obsIngestPreview ?? "Provide server + key"}</p>
-              </div>
-              <p className="text-[9px] text-muted-foreground/70 leading-relaxed">
-                In OBS: Settings → Stream, choose Custom, paste Server + Stream Key, then start
-                streaming.
-              </p>
-            </div>
-          </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   );
