@@ -20,6 +20,9 @@ services:
       KODA_CORS_ORIGIN: https://${APP_DOMAIN}
       KODA_MEDIA_RTMP_BASE_URL: rtmp://${INGEST_DOMAIN}:1935/live
       KODA_MEDIA_HLS_BASE_URL: https://${PLAY_DOMAIN}/live
+      KODA_DB_PATH: /app/data/koda.db
+    volumes:
+      - koda_data:/app/data
     depends_on:
       - media
     expose:
@@ -63,5 +66,6 @@ services:
       - caddy_config:/config
 
 volumes:
+  koda_data:
   caddy_data:
   caddy_config:

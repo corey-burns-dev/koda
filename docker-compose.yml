@@ -18,6 +18,9 @@ services:
       KODA_CORS_ORIGIN: http://localhost:3000
       KODA_MEDIA_RTMP_BASE_URL: rtmp://localhost:1935/live
       KODA_MEDIA_HLS_BASE_URL: http://localhost:8888/live
+      KODA_DB_PATH: /app/data/koda.db
+    volumes:
+      - koda_data:/app/data
     depends_on:
       - media
     ports:
@@ -38,3 +41,6 @@ services:
       - backend
     ports:
       - "3000:3000"
+
+volumes:
+  koda_data:
