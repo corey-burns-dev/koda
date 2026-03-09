@@ -53,6 +53,41 @@ export type ChatEvent = {
   message: ChatMessage;
 };
 
+export type TypingUser = {
+  user_id: string;
+  username: string;
+  expires_at_ms: number;
+};
+
+export type ChatTypingEvent = {
+  type: "chat.typing";
+  room_id: string;
+  users: TypingUser[];
+};
+
+export type PresenceUser = {
+  user_id: string;
+  username: string;
+};
+
+export type PresenceUpdateEvent = {
+  type: "presence.update";
+  room_id: string;
+  users: PresenceUser[];
+};
+
+export type Reaction = {
+  emoji: string;
+  count: number;
+  reacted_by_me: boolean;
+};
+
+export type ReactionBulkEvent = {
+  type: "reaction.bulk";
+  room_id: string;
+  by_message: Record<string, Reaction[]>;
+};
+
 export type SignalMode = "stream" | "video";
 
 export type PeerRole = "host" | "viewer" | "participant";

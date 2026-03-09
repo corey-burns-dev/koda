@@ -1,5 +1,6 @@
 const std = @import("std");
 const store = @import("store.zig");
+const db_mod = @import("db.zig");
 const chat_service = @import("services/chat_service.zig");
 const room_service = @import("services/room_service.zig");
 const stream_service = @import("services/stream_service.zig");
@@ -9,15 +10,28 @@ const user_service = @import("services/user_service.zig");
 pub const App = struct {
     allocator: std.mem.Allocator,
     state: store.State,
+    db: db_mod.Db,
 
-    pub fn init(allocator: std.mem.Allocator) !App {
+    pub fn init(allocator: std.mem.Allocator, db_path: []const u8) !App {
+        var db = try db_mod.Db.open(allocator, db_path);
+        errdefer db.close();
+
+        try db.createSchema();
+
+        var state = store.State.init(allocator);
+        errdefer state.deinit(allocator);
+
+        try db.loadInto(&state);
+
         return .{
             .allocator = allocator,
-            .state = store.State.init(allocator),
+            .state = state,
+            .db = db,
         };
     }
 
     pub fn deinit(self: *App) void {
+        self.db.close();
         self.state.deinit(self.allocator);
     }
 

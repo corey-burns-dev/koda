@@ -6,12 +6,14 @@ pub const Config = struct {
     cors_origin: []const u8,
     media_rtmp_base_url: []const u8,
     media_hls_base_url: []const u8,
+    db_path: []const u8,
 
     pub fn deinit(self: *Config, allocator: std.mem.Allocator) void {
         allocator.free(self.host);
         allocator.free(self.cors_origin);
         allocator.free(self.media_rtmp_base_url);
         allocator.free(self.media_hls_base_url);
+        allocator.free(self.db_path);
     }
 };
 
@@ -30,6 +32,9 @@ pub fn load(allocator: std.mem.Allocator) !Config {
     errdefer allocator.free(media_rtmp_base_url);
 
     const media_hls_base_url = try envOrDefault(allocator, "KODA_MEDIA_HLS_BASE_URL", "http://localhost:8888/live");
+    errdefer allocator.free(media_hls_base_url);
+
+    const db_path = try envOrDefault(allocator, "KODA_DB_PATH", "./koda.db");
 
     return .{
         .host = host,
@@ -37,6 +42,7 @@ pub fn load(allocator: std.mem.Allocator) !Config {
         .cors_origin = cors_origin,
         .media_rtmp_base_url = media_rtmp_base_url,
         .media_hls_base_url = media_hls_base_url,
+        .db_path = db_path,
     };
 }
 

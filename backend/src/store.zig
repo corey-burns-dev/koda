@@ -48,6 +48,27 @@ pub const User = struct {
     password_hash: []const u8,
 };
 
+pub const Reaction = struct {
+    id: []const u8,
+    message_id: []const u8,
+    room_id: []const u8,
+    user_id: []const u8,
+    emoji: []const u8,
+};
+
+pub const TypingUser = struct {
+    room_id: []const u8,
+    user_id: []const u8,
+    username: []const u8,
+    expires_at_ms: i64,
+};
+
+pub const PresenceEntry = struct {
+    room_id: []const u8,
+    user_id: []const u8,
+    username: []const u8,
+};
+
 pub const Session = struct {
     token: []const u8,
     user_id: []const u8,
@@ -61,11 +82,18 @@ pub const State = struct {
     signal_events: std.ArrayList(SignalEvent),
     users: std.ArrayList(User),
     sessions: std.ArrayList(Session),
+    reactions: std.ArrayList(Reaction),
+    typing: std.ArrayList(TypingUser),
+    presence: std.ArrayList(PresenceEntry),
     next_room_id: u64,
     next_message_id: u64,
     next_stream_id: u64,
     next_signal_id: u64,
     next_user_id: u64,
+    next_reaction_id: u64,
+    typing_seq: u64,
+    presence_seq: u64,
+    reaction_seq: u64,
 
     pub fn init(allocator: std.mem.Allocator) State {
         _ = allocator;
@@ -77,11 +105,18 @@ pub const State = struct {
             .signal_events = .empty,
             .users = .empty,
             .sessions = .empty,
+            .reactions = .empty,
+            .typing = .empty,
+            .presence = .empty,
             .next_room_id = 1,
             .next_message_id = 1,
             .next_stream_id = 1,
             .next_signal_id = 1,
             .next_user_id = 1,
+            .next_reaction_id = 1,
+            .typing_seq = 0,
+            .presence_seq = 0,
+            .reaction_seq = 0,
         };
     }
 
@@ -138,6 +173,29 @@ pub const State = struct {
             allocator.free(session.user_id);
         }
         self.sessions.deinit(allocator);
+
+        for (self.reactions.items) |r| {
+            allocator.free(r.id);
+            allocator.free(r.message_id);
+            allocator.free(r.room_id);
+            allocator.free(r.user_id);
+            allocator.free(r.emoji);
+        }
+        self.reactions.deinit(allocator);
+
+        for (self.typing.items) |t| {
+            allocator.free(t.room_id);
+            allocator.free(t.user_id);
+            allocator.free(t.username);
+        }
+        self.typing.deinit(allocator);
+
+        for (self.presence.items) |p| {
+            allocator.free(p.room_id);
+            allocator.free(p.user_id);
+            allocator.free(p.username);
+        }
+        self.presence.deinit(allocator);
     }
 
     pub fn nextRoomId(self: *State, allocator: std.mem.Allocator) ![]const u8 {
@@ -167,6 +225,12 @@ pub const State = struct {
     pub fn nextUserId(self: *State, allocator: std.mem.Allocator) ![]const u8 {
         const id = try std.fmt.allocPrint(allocator, "user-{d}", .{self.next_user_id});
         self.next_user_id += 1;
+        return id;
+    }
+
+    pub fn nextReactionId(self: *State, allocator: std.mem.Allocator) ![]const u8 {
+        const id = try std.fmt.allocPrint(allocator, "rxn-{d}", .{self.next_reaction_id});
+        self.next_reaction_id += 1;
         return id;
     }
 

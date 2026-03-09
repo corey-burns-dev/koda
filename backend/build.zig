@@ -22,6 +22,11 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    exe.linkSystemLibrary("sqlite3");
+    exe.linkLibC();
+    backend_mod.linkSystemLibrary("sqlite3", .{});
+    backend_mod.link_libc = true;
+
     b.installArtifact(exe);
 
     const run_step = b.step("run", "Run the Koda backend");

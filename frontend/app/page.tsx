@@ -70,7 +70,17 @@ export default function Home() {
     setAuthOpen(true);
   }, [clearUser]);
 
-  const { chatSocketState, draft, messages, setDraft, submitMessage } = useRoomChat({
+  const {
+    chatSocketState,
+    draft,
+    messages,
+    presenceUsers,
+    reactionsById,
+    setDraft,
+    submitMessage,
+    toggleReaction,
+    typingUsers,
+  } = useRoomChat({
     activeRoomId,
     buildWsUrl,
     hydrated,
@@ -273,9 +283,13 @@ export default function Home() {
           currentUsername={user?.username ?? null}
           draft={draft}
           messages={messages}
+          presenceUsers={presenceUsers}
+          reactionsById={reactionsById}
+          typingUsers={typingUsers}
           onOpenAuth={openAuthModal}
           onDraftChange={setDraft}
           onSubmit={submitMessage}
+          onToggleReaction={toggleReaction}
         />
       </section>
 

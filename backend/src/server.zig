@@ -21,7 +21,7 @@ pub const KodaServer = struct {
         var cfg = try config_mod.load(allocator);
         errdefer cfg.deinit(allocator);
 
-        var app = try app_mod.App.init(allocator);
+        var app = try app_mod.App.init(allocator, cfg.db_path);
         errdefer app.deinit();
 
         var server = KodaServer{
@@ -69,9 +69,14 @@ pub const KodaServer = struct {
         var rooms = self.app.roomService();
         const lobby = try rooms.createRoom("lobby", .text);
         _ = try rooms.createRoom("stage", .stream);
+        self.app.db.insertRoom(lobby);
+        for (self.app.state.rooms.items) |room| {
+            self.app.db.insertRoom(room);
+        }
 
         var chat = self.app.chatService();
-        _ = try chat.sendMessage(lobby.id, "system", "Koda backend is online.");
+        const seed_msg = try chat.sendMessage(lobby.id, "system", "Koda backend is online.");
+        self.app.db.insertMessage(seed_msg);
     }
 
     fn acceptConnection(self: *KodaServer, connection: std.net.Server.Connection) void {
@@ -190,6 +195,17 @@ pub const KodaServer = struct {
             }
         }
 
+        if (std.mem.eql(u8, target.path, "/api/reactions")) {
+            switch (request.head.method) {
+                .POST => {
+                    const payload = try self.handleToggleReaction(request);
+                    defer self.allocator.free(payload);
+                    return self.respondJson(request, .ok, payload);
+                },
+                else => return self.respondText(request, .method_not_allowed, "method not allowed"),
+            }
+        }
+
         if (std.mem.eql(u8, target.path, "/api/auth/register") and request.head.method == .POST) {
             const payload = try self.handleRegister(request);
             defer self.allocator.free(payload);
@@ -229,6 +245,7 @@ pub const KodaServer = struct {
 
         var users = self.app.userService();
         const user = try users.register(username, email, password);
+        self.app.db.insertUser(user);
         const token = try self.createSessionLocked(user.id);
         return try self.buildUserJson(user, token);
     }
@@ -304,6 +321,7 @@ pub const KodaServer = struct {
 
         var rooms = self.app.roomService();
         const room = try rooms.createRoom(name, kind);
+        self.app.db.insertRoom(room);
         return try self.buildRoomJson(room);
     }
 
@@ -413,6 +431,7 @@ pub const KodaServer = struct {
             ingest_server_url,
             playback_url,
         );
+        self.app.db.insertStream(stream);
         self.notifyUpdate();
         return try self.buildStreamJson(stream, true);
     }
@@ -451,12 +470,129 @@ pub const KodaServer = struct {
                 }
 
                 stream.live = false;
+                self.app.db.updateStreamLive(stream.id, false);
                 self.notifyUpdate();
                 return try self.buildStreamJson(stream.*, false);
             }
         }
 
         return error.StreamNotFound;
+    }
+
+    fn handleToggleReaction(self: *KodaServer, request: *http.Server.Request) ![]u8 {
+        const token = extractBearerToken(request) orelse return error.InvalidToken;
+
+        self.state_mutex.lock();
+        const maybe_uid = self.validateTokenLocked(token);
+        const auth_user_id = if (maybe_uid) |uid| try self.allocator.dupe(u8, uid) else null;
+        self.state_mutex.unlock();
+
+        const user_id = auth_user_id orelse return error.InvalidToken;
+        defer self.allocator.free(user_id);
+
+        const body = try self.readBody(request, 16 * 1024);
+        defer self.allocator.free(body);
+
+        const ReactionToggle = struct {
+            message_id: []const u8,
+            room_id: []const u8,
+            emoji: []const u8,
+        };
+
+        var parsed = try std.json.parseFromSlice(ReactionToggle, self.allocator, body, .{ .ignore_unknown_fields = true });
+        defer parsed.deinit();
+
+        const message_id = std.mem.trim(u8, parsed.value.message_id, " \t\r\n");
+        const room_id = std.mem.trim(u8, parsed.value.room_id, " \t\r\n");
+        const emoji = std.mem.trim(u8, parsed.value.emoji, " \t\r\n");
+
+        if (message_id.len == 0 or room_id.len == 0 or emoji.len == 0) {
+            return error.InvalidReaction;
+        }
+
+        self.state_mutex.lock();
+        defer self.state_mutex.unlock();
+
+        // Toggle: remove if already reacted, else add.
+        var found_idx: ?usize = null;
+        for (self.app.state.reactions.items, 0..) |r, i| {
+            if (std.mem.eql(u8, r.message_id, message_id) and
+                std.mem.eql(u8, r.user_id, user_id) and
+                std.mem.eql(u8, r.emoji, emoji))
+            {
+                found_idx = i;
+                break;
+            }
+        }
+
+        if (found_idx) |idx| {
+            const removed = self.app.state.reactions.orderedRemove(idx);
+            self.allocator.free(removed.id);
+            self.allocator.free(removed.message_id);
+            self.allocator.free(removed.room_id);
+            self.allocator.free(removed.user_id);
+            self.allocator.free(removed.emoji);
+            self.app.db.deleteReaction(message_id, user_id, emoji);
+        } else {
+            const reaction = store.Reaction{
+                .id = try self.app.state.nextReactionId(self.allocator),
+                .message_id = try self.allocator.dupe(u8, message_id),
+                .room_id = try self.allocator.dupe(u8, room_id),
+                .user_id = try self.allocator.dupe(u8, user_id),
+                .emoji = try self.allocator.dupe(u8, emoji),
+            };
+            try self.app.state.reactions.append(self.allocator, reaction);
+            self.app.db.insertReaction(reaction);
+        }
+
+        self.app.state.reaction_seq += 1;
+        self.notifyUpdate();
+
+        // Return updated reactions for this message.
+        return try self.buildMessageReactionsJson(message_id, user_id);
+    }
+
+    fn buildMessageReactionsJson(self: *KodaServer, message_id: []const u8, viewer_user_id: []const u8) ![]u8 {
+        var out: std.ArrayList(u8) = .empty;
+        errdefer out.deinit(self.allocator);
+        var writer = out.writer(self.allocator);
+
+        // Aggregate emoji → {count, reacted_by_me}.
+        const EmojiAgg = struct { count: u32, reacted_by_me: bool };
+        var map = std.StringHashMap(EmojiAgg).init(self.allocator);
+        defer map.deinit();
+
+        for (self.app.state.reactions.items) |r| {
+            if (!std.mem.eql(u8, r.message_id, message_id)) continue;
+            const entry = try map.getOrPut(r.emoji);
+            if (!entry.found_existing) {
+                entry.value_ptr.* = .{ .count = 0, .reacted_by_me = false };
+            }
+            entry.value_ptr.count += 1;
+            if (std.mem.eql(u8, r.user_id, viewer_user_id)) {
+                entry.value_ptr.reacted_by_me = true;
+            }
+        }
+
+        try writer.print("{{\"message_id\":", .{});
+        try writeJsonString(&writer, message_id);
+        try writer.writeAll(",\"reactions\":[");
+
+        var first = true;
+        var it = map.iterator();
+        while (it.next()) |entry| {
+            if (!first) try writer.writeByte(',');
+            first = false;
+            try writer.writeByte('{');
+            try writer.writeAll("\"emoji\":");
+            try writeJsonString(&writer, entry.key_ptr.*);
+            try writer.print(",\"count\":{d}", .{entry.value_ptr.count});
+            try writer.print(",\"reacted_by_me\":{s}", .{if (entry.value_ptr.reacted_by_me) "true" else "false"});
+            try writer.writeByte('}');
+        }
+
+        try writer.writeAll("]}");
+        return try out.toOwnedSlice(self.allocator);
     }
 
     fn readBody(self: *KodaServer, request: *http.Server.Request, max_len: usize) ![]u8 {
@@ -541,45 +677,331 @@ pub const KodaServer = struct {
             .closed = &closed,
         };
 
+        // Add this user to room presence.
+        self.addPresence(room_id, user_id);
+
+        defer {
+            // Remove from presence on disconnect.
+            self.removePresence(room_id, user_id);
+            // Remove typing state on disconnect.
+            self.clearTyping(room_id, user_id);
+        }
+
         const recv_thread = try std.Thread.spawn(.{}, receiveSocketMessages, .{&ctx});
         defer recv_thread.join();
 
-        var last_seen: usize = 0;
+        var last_msg_seen: usize = 0;
+        var last_typing_seq: u64 = 0;
+        var last_presence_seq: u64 = 0;
+        var last_reaction_seq: u64 = 0;
+
         self.state_mutex.lock();
-        last_seen = self.app.state.messages.items.len;
+        last_msg_seen = self.app.state.messages.items.len;
+        last_typing_seq = self.app.state.typing_seq;
+        last_presence_seq = self.app.state.presence_seq;
+        last_reaction_seq = self.app.state.reaction_seq;
         self.state_mutex.unlock();
+
+        // Send initial presence for this room.
+        {
+            const presence_json = try self.buildPresenceJson(room_id, null);
+            defer self.allocator.free(presence_json);
+            socket.writeMessage(presence_json, .text) catch return;
+        }
 
         while (true) {
             if (closed.load(.acquire)) return;
 
             const update_before = self.update_id.load(.acquire);
+            var sent_anything = false;
 
-            var pending: std.ArrayList(store.Message) = .empty;
-            defer pending.deinit(self.allocator);
+            // --- New messages ---
+            {
+                var pending: std.ArrayList(store.Message) = .empty;
+                defer pending.deinit(self.allocator);
 
-            self.state_mutex.lock();
-            const messages = self.app.state.messages.items;
-            if (last_seen < messages.len) {
-                for (messages[last_seen..]) |message| {
-                    if (!std.mem.eql(u8, message.room_id, room_id)) continue;
-                    try pending.append(self.allocator, message);
+                self.state_mutex.lock();
+                const messages = self.app.state.messages.items;
+                if (last_msg_seen < messages.len) {
+                    for (messages[last_msg_seen..]) |message| {
+                        if (!std.mem.eql(u8, message.room_id, room_id)) continue;
+                        try pending.append(self.allocator, message);
+                    }
+                    last_msg_seen = messages.len;
                 }
-                last_seen = messages.len;
-            }
-            self.state_mutex.unlock();
+                self.state_mutex.unlock();
 
-            for (pending.items) |message| {
-                const event = try self.buildChatEventJson(message);
-                defer self.allocator.free(event);
-                socket.writeMessage(event, .text) catch {
-                    return;
-                };
+                for (pending.items) |message| {
+                    const event = try self.buildChatEventJson(message);
+                    defer self.allocator.free(event);
+                    socket.writeMessage(event, .text) catch return;
+                    sent_anything = true;
+                }
             }
 
-            if (pending.items.len == 0) {
+            // --- Typing events ---
+            {
+                self.state_mutex.lock();
+                const cur_typing_seq = self.app.state.typing_seq;
+                self.state_mutex.unlock();
+
+                if (cur_typing_seq != last_typing_seq) {
+                    last_typing_seq = cur_typing_seq;
+                    const typing_json = try self.buildTypingJson(room_id, user_id);
+                    defer self.allocator.free(typing_json);
+                    socket.writeMessage(typing_json, .text) catch return;
+                    sent_anything = true;
+                }
+            }
+
+            // --- Presence updates ---
+            {
+                self.state_mutex.lock();
+                const cur_presence_seq = self.app.state.presence_seq;
+                self.state_mutex.unlock();
+
+                if (cur_presence_seq != last_presence_seq) {
+                    last_presence_seq = cur_presence_seq;
+                    const presence_json = try self.buildPresenceJson(room_id, null);
+                    defer self.allocator.free(presence_json);
+                    socket.writeMessage(presence_json, .text) catch return;
+                    sent_anything = true;
+                }
+            }
+
+            // --- Reaction updates ---
+            {
+                self.state_mutex.lock();
+                const cur_reaction_seq = self.app.state.reaction_seq;
+                self.state_mutex.unlock();
+
+                if (cur_reaction_seq != last_reaction_seq) {
+                    last_reaction_seq = cur_reaction_seq;
+                    const reaction_json = try self.buildRoomReactionsJson(room_id, user_id);
+                    defer self.allocator.free(reaction_json);
+                    socket.writeMessage(reaction_json, .text) catch return;
+                    sent_anything = true;
+                }
+            }
+
+            if (!sent_anything) {
                 std.Thread.Futex.timedWait(&self.update_id, update_before, 250 * std.time.ns_per_ms) catch {};
             }
         }
+    }
+
+    fn addPresence(self: *KodaServer, room_id: []const u8, user_id: []const u8) void {
+        self.state_mutex.lock();
+        defer self.state_mutex.unlock();
+
+        const username = self.usernameByUserIdLocked(user_id);
+        const entry = store.PresenceEntry{
+            .room_id = self.allocator.dupe(u8, room_id) catch return,
+            .user_id = self.allocator.dupe(u8, user_id) catch return,
+            .username = self.allocator.dupe(u8, username) catch return,
+        };
+        self.app.state.presence.append(self.allocator, entry) catch return;
+        self.app.state.presence_seq += 1;
+        self.notifyUpdate();
+    }
+
+    fn removePresence(self: *KodaServer, room_id: []const u8, user_id: []const u8) void {
+        self.state_mutex.lock();
+        defer self.state_mutex.unlock();
+
+        var i: usize = 0;
+        while (i < self.app.state.presence.items.len) {
+            const entry = self.app.state.presence.items[i];
+            if (std.mem.eql(u8, entry.room_id, room_id) and std.mem.eql(u8, entry.user_id, user_id)) {
+                self.allocator.free(entry.room_id);
+                self.allocator.free(entry.user_id);
+                self.allocator.free(entry.username);
+                _ = self.app.state.presence.orderedRemove(i);
+            } else {
+                i += 1;
+            }
+        }
+        self.app.state.presence_seq += 1;
+        self.notifyUpdate();
+    }
+
+    fn clearTyping(self: *KodaServer, room_id: []const u8, user_id: []const u8) void {
+        self.state_mutex.lock();
+        defer self.state_mutex.unlock();
+
+        var i: usize = 0;
+        while (i < self.app.state.typing.items.len) {
+            const t = self.app.state.typing.items[i];
+            if (std.mem.eql(u8, t.room_id, room_id) and std.mem.eql(u8, t.user_id, user_id)) {
+                self.allocator.free(t.room_id);
+                self.allocator.free(t.user_id);
+                self.allocator.free(t.username);
+                _ = self.app.state.typing.orderedRemove(i);
+                self.app.state.typing_seq += 1;
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    fn upsertTyping(self: *KodaServer, room_id: []const u8, user_id: []const u8) !void {
+        self.state_mutex.lock();
+        defer self.state_mutex.unlock();
+
+        const expires_at = std.time.milliTimestamp() + 4000; // 4 s
+        const username = self.usernameByUserIdLocked(user_id);
+
+        // Update existing entry if present.
+        for (self.app.state.typing.items) |*t| {
+            if (std.mem.eql(u8, t.room_id, room_id) and std.mem.eql(u8, t.user_id, user_id)) {
+                t.expires_at_ms = expires_at;
+                self.app.state.typing_seq += 1;
+                self.notifyUpdate();
+                return;
+            }
+        }
+
+        // New entry.
+        const entry = store.TypingUser{
+            .room_id = try self.allocator.dupe(u8, room_id),
+            .user_id = try self.allocator.dupe(u8, user_id),
+            .username = try self.allocator.dupe(u8, username),
+            .expires_at_ms = expires_at,
+        };
+        try self.app.state.typing.append(self.allocator, entry);
+        self.app.state.typing_seq += 1;
+        self.notifyUpdate();
+    }
+
+    fn buildTypingJson(self: *KodaServer, room_id: []const u8, exclude_user_id: []const u8) ![]u8 {
+        var out: std.ArrayList(u8) = .empty;
+        errdefer out.deinit(self.allocator);
+        var writer = out.writer(self.allocator);
+
+        const now = std.time.milliTimestamp();
+
+        try writer.writeAll("{\"type\":\"chat.typing\",\"room_id\":");
+        try writeJsonString(&writer, room_id);
+        try writer.writeAll(",\"users\":[");
+
+        self.state_mutex.lock();
+        defer self.state_mutex.unlock();
+
+        var first = true;
+        for (self.app.state.typing.items) |t| {
+            if (!std.mem.eql(u8, t.room_id, room_id)) continue;
+            if (std.mem.eql(u8, t.user_id, exclude_user_id)) continue;
+            if (t.expires_at_ms < now) continue;
+            if (!first) try writer.writeByte(',');
+            first = false;
+            try writer.writeByte('{');
+            try writer.writeAll("\"user_id\":");
+            try writeJsonString(&writer, t.user_id);
+            try writer.writeAll(",\"username\":");
+            try writeJsonString(&writer, t.username);
+            try writer.print(",\"expires_at_ms\":{d}", .{t.expires_at_ms});
+            try writer.writeByte('}');
+        }
+
+        try writer.writeAll("]}");
+        return try out.toOwnedSlice(self.allocator);
+    }
+
+    fn buildPresenceJson(self: *KodaServer, room_id: []const u8, exclude_user_id: ?[]const u8) ![]u8 {
+        var out: std.ArrayList(u8) = .empty;
+        errdefer out.deinit(self.allocator);
+        var writer = out.writer(self.allocator);
+
+        try writer.writeAll("{\"type\":\"presence.update\",\"room_id\":");
+        try writeJsonString(&writer, room_id);
+        try writer.writeAll(",\"users\":[");
+
+        self.state_mutex.lock();
+        defer self.state_mutex.unlock();
+
+        var first = true;
+        for (self.app.state.presence.items) |p| {
+            if (!std.mem.eql(u8, p.room_id, room_id)) continue;
+            if (exclude_user_id) |eid| {
+                if (std.mem.eql(u8, p.user_id, eid)) continue;
+            }
+            if (!first) try writer.writeByte(',');
+            first = false;
+            try writer.writeByte('{');
+            try writer.writeAll("\"user_id\":");
+            try writeJsonString(&writer, p.user_id);
+            try writer.writeAll(",\"username\":");
+            try writeJsonString(&writer, p.username);
+            try writer.writeByte('}');
+        }
+
+        try writer.writeAll("]}");
+        return try out.toOwnedSlice(self.allocator);
+    }
+
+    fn buildRoomReactionsJson(self: *KodaServer, room_id: []const u8, viewer_user_id: []const u8) ![]u8 {
+        var out: std.ArrayList(u8) = .empty;
+        errdefer out.deinit(self.allocator);
+        var writer = out.writer(self.allocator);
+
+        try writer.writeAll("{\"type\":\"reaction.bulk\",\"room_id\":");
+        try writeJsonString(&writer, room_id);
+        try writer.writeAll(",\"by_message\":{");
+
+        self.state_mutex.lock();
+        defer self.state_mutex.unlock();
+
+        // Collect unique message_ids that have reactions in this room.
+        var seen_msgs = std.StringHashMap(void).init(self.allocator);
+        defer seen_msgs.deinit();
+
+        for (self.app.state.reactions.items) |r| {
+            if (std.mem.eql(u8, r.room_id, room_id)) {
+                _ = seen_msgs.put(r.message_id, {}) catch {};
+            }
+        }
+
+        var first_msg = true;
+        var msg_it = seen_msgs.keyIterator();
+        while (msg_it.next()) |msg_id_ptr| {
+            const msg_id = msg_id_ptr.*;
+            if (!first_msg) try writer.writeByte(',');
+            first_msg = false;
+
+            try writeJsonString(&writer, msg_id);
+            try writer.writeAll(":[");
+
+            // Aggregate emoji counts for this message.
+            const EmojiAgg = struct { count: u32, reacted_by_me: bool };
+            var emoji_map = std.StringHashMap(EmojiAgg).init(self.allocator);
+            defer emoji_map.deinit();
+
+            for (self.app.state.reactions.items) |r| {
+                if (!std.mem.eql(u8, r.message_id, msg_id)) continue;
+                const entry = emoji_map.getOrPut(r.emoji) catch continue;
+                if (!entry.found_existing) entry.value_ptr.* = .{ .count = 0, .reacted_by_me = false };
+                entry.value_ptr.count += 1;
+                if (std.mem.eql(u8, r.user_id, viewer_user_id)) entry.value_ptr.reacted_by_me = true;
+            }
+
+            var first_emoji = true;
+            var emoji_it = emoji_map.iterator();
+            while (emoji_it.next()) |e| {
+                if (!first_emoji) try writer.writeByte(',');
+                first_emoji = false;
+                try writer.writeByte('{');
+                try writer.writeAll("\"emoji\":");
+                try writeJsonString(&writer, e.key_ptr.*);
+                try writer.print(",\"count\":{d}", .{e.value_ptr.count});
+                try writer.print(",\"reacted_by_me\":{s}", .{if (e.value_ptr.reacted_by_me) "true" else "false"});
+                try writer.writeByte('}');
+            }
+
+            try writer.writeByte(']');
+        }
+
+        try writer.writeAll("}}");
+        return try out.toOwnedSlice(self.allocator);
     }
 
     fn serveSignalSocket(self: *KodaServer, socket: *http.Server.WebSocket, room_id: []const u8, user_id: []const u8) !void {
@@ -644,6 +1066,7 @@ pub const KodaServer = struct {
 
         var chat = self.app.chatService();
         const message = try chat.sendMessage(room_id, user_id, body);
+        self.app.db.insertMessage(message);
         self.notifyUpdate();
         return message;
     }
@@ -901,6 +1324,7 @@ pub const KodaServer = struct {
             error.InvalidRoomName => self.respondText(request, .bad_request, "room name is required"),
             error.InvalidMessage => self.respondText(request, .bad_request, "room_id and body are required"),
             error.InvalidStreamStart => self.respondText(request, .bad_request, "room_id and title are required"),
+            error.InvalidReaction => self.respondText(request, .bad_request, "message_id, room_id, and emoji are required"),
             error.InvalidObsConfig => self.respondText(request, .bad_request, "provide both OBS server and stream key (valid RTMP URL and key format)"),
             error.InvalidStreamId => self.respondText(request, .bad_request, "stream_id is required"),
             error.InvalidSignalPayload => self.respondText(request, .bad_request, "invalid signal payload"),
@@ -930,6 +1354,7 @@ pub const KodaServer = struct {
         errdefer self.allocator.free(session.user_id);
 
         try self.app.state.sessions.append(self.allocator, session);
+        self.app.db.insertSession(session);
         return token;
     }
 
@@ -972,6 +1397,11 @@ fn receiveSocketMessages(ctx: *WebSocketRecvContext) void {
         ctx.server.notifyUpdate();
     }
 
+    const ChatEnvelope = struct {
+        type: []const u8,
+        body: ?[]const u8 = null,
+    };
+
     while (true) {
         const packet = ctx.socket.readSmallMessage() catch return;
         if (packet.opcode != .text and packet.opcode != .binary) continue;
@@ -979,7 +1409,24 @@ fn receiveSocketMessages(ctx: *WebSocketRecvContext) void {
         const text = std.mem.trim(u8, packet.data, " \t\r\n");
         if (text.len == 0) continue;
 
-        _ = ctx.server.appendMessage(ctx.room_id, ctx.user_id, text) catch {};
+        // Try JSON envelope first; fall back to treating raw text as a message.
+        if (std.json.parseFromSlice(ChatEnvelope, ctx.server.allocator, text, .{ .ignore_unknown_fields = true })) |parsed| {
+            defer parsed.deinit();
+
+            if (std.mem.eql(u8, parsed.value.type, "typing")) {
+                ctx.server.upsertTyping(ctx.room_id, ctx.user_id) catch {};
+            } else if (std.mem.eql(u8, parsed.value.type, "message")) {
+                if (parsed.value.body) |body| {
+                    const trimmed = std.mem.trim(u8, body, " \t\r\n");
+                    if (trimmed.len > 0) {
+                        _ = ctx.server.appendMessage(ctx.room_id, ctx.user_id, trimmed) catch {};
+                    }
+                }
+            }
+        } else |_| {
+            // Legacy plain-text fallback.
+            _ = ctx.server.appendMessage(ctx.room_id, ctx.user_id, text) catch {};
+        }
     }
 }
 
