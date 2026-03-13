@@ -195,6 +195,17 @@ pub const KodaServer = struct {
             }
         }
 
+        if (std.mem.eql(u8, target.path, "/api/streams/delete")) {
+            switch (request.head.method) {
+                .POST => {
+                    const payload = try self.handleDeleteStream(request);
+                    defer self.allocator.free(payload);
+                    return self.respondJson(request, .ok, payload);
+                },
+                else => return self.respondText(request, .method_not_allowed, "method not allowed"),
+            }
+        }
+
         if (std.mem.eql(u8, target.path, "/api/reactions")) {
             switch (request.head.method) {
                 .POST => {
@@ -423,6 +434,11 @@ pub const KodaServer = struct {
 
         var streams = self.app.streamService();
         streams.stopLiveStreamsInRoom(room_id);
+        for (self.app.state.streams.items) |existing_stream| {
+            if (std.mem.eql(u8, existing_stream.room_id, room_id) and !existing_stream.live) {
+                self.app.db.updateStreamLive(existing_stream.id, false);
+            }
+        }
         const stream = try streams.startStream(
             room_id,
             user_id,
@@ -473,6 +489,51 @@ pub const KodaServer = struct {
                 self.app.db.updateStreamLive(stream.id, false);
                 self.notifyUpdate();
                 return try self.buildStreamJson(stream.*, false);
+            }
+        }
+
+        return error.StreamNotFound;
+    }
+
+    fn handleDeleteStream(self: *KodaServer, request: *http.Server.Request) ![]u8 {
+        const token = extractBearerToken(request) orelse return error.InvalidToken;
+
+        self.state_mutex.lock();
+        const maybe_uid = self.validateTokenLocked(token);
+        const auth_user_id = if (maybe_uid) |uid| try self.allocator.dupe(u8, uid) else null;
+        self.state_mutex.unlock();
+
+        const user_id = auth_user_id orelse return error.InvalidToken;
+        defer self.allocator.free(user_id);
+
+        const body = try self.readBody(request, 32 * 1024);
+        defer self.allocator.free(body);
+
+        const StreamDelete = struct {
+            stream_id: []const u8,
+        };
+
+        var parsed = try std.json.parseFromSlice(StreamDelete, self.allocator, body, .{ .ignore_unknown_fields = true });
+        defer parsed.deinit();
+
+        const stream_id = std.mem.trim(u8, parsed.value.stream_id, " \t\r\n");
+        if (stream_id.len == 0) return error.InvalidStreamId;
+
+        self.state_mutex.lock();
+        defer self.state_mutex.unlock();
+
+        for (self.app.state.streams.items, 0..) |stream, idx| {
+            if (std.mem.eql(u8, stream.id, stream_id)) {
+                if (!std.mem.eql(u8, stream.host_user_id, user_id)) {
+                    return error.UnauthorizedUser;
+                }
+
+                const deleted_stream = self.app.state.streams.orderedRemove(idx);
+                defer store.deinitStreamSession(self.allocator, deleted_stream);
+
+                self.app.db.deleteStream(deleted_stream.id);
+                self.notifyUpdate();
+                return try self.buildStreamJson(deleted_stream, false);
             }
         }
 

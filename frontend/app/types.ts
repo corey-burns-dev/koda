@@ -3,89 +3,89 @@ export type RoomKind = "text" | "voice" | "video" | "stream";
 export type BrowseTab = "all" | "live" | "video" | "text";
 
 export type Health = {
-  ok: boolean;
-  service: string;
+	ok: boolean;
+	service: string;
 };
 
 export type AuthUser = {
-  id: string;
-  username: string;
-  email: string;
-  token: string;
+	id: string;
+	username: string;
+	email: string;
+	token: string;
 };
 
 export type Room = {
-  id: string;
-  name: string;
-  kind: RoomKind;
+	id: string;
+	name: string;
+	kind: RoomKind;
 };
 
 export type StreamSession = {
-  id: string;
-  room_id: string;
-  host_user_id: string;
-  title: string;
-  playback_url: string;
-  live: boolean;
+	id: string;
+	room_id: string;
+	host_user_id: string;
+	title: string;
+	playback_url: string;
+	live: boolean;
 };
 
 export type StreamObsConfig = {
-  server_url: string;
-  stream_key: string;
-  ingest_url: string;
+	server_url: string;
+	stream_key: string;
+	ingest_url: string;
 };
 
 export type StreamStartResponse = StreamSession & {
-  obs: StreamObsConfig;
+	obs: StreamObsConfig;
 };
 
 export type ChatMessage = {
-  id: string;
-  room_id: string;
-  user_id: string;
-  username?: string;
-  body: string;
-  sent_at_unix_ms: number;
+	id: string;
+	room_id: string;
+	user_id: string;
+	username?: string;
+	body: string;
+	sent_at_unix_ms: number;
 };
 
 export type ChatEvent = {
-  type: "chat.message";
-  message: ChatMessage;
+	type: "chat.message";
+	message: ChatMessage;
 };
 
 export type TypingUser = {
-  user_id: string;
-  username: string;
-  expires_at_ms: number;
+	user_id: string;
+	username: string;
+	expires_at_ms: number;
 };
 
 export type ChatTypingEvent = {
-  type: "chat.typing";
-  room_id: string;
-  users: TypingUser[];
+	type: "chat.typing";
+	room_id: string;
+	users: TypingUser[];
 };
 
 export type PresenceUser = {
-  user_id: string;
-  username: string;
+	user_id: string;
+	username: string;
 };
 
 export type PresenceUpdateEvent = {
-  type: "presence.update";
-  room_id: string;
-  users: PresenceUser[];
+	type: "presence.update";
+	room_id: string;
+	users: PresenceUser[];
 };
 
 export type Reaction = {
-  emoji: string;
-  count: number;
-  reacted_by_me: boolean;
+	emoji: string;
+	count: number;
+	reacted_by_me: boolean;
 };
 
 export type ReactionBulkEvent = {
-  type: "reaction.bulk";
-  room_id: string;
-  by_message: Record<string, Reaction[]>;
+	type: "reaction.bulk";
+	room_id: string;
+	by_message: Record<string, Reaction[]>;
 };
 
 export type SignalMode = "stream" | "video";
@@ -93,54 +93,54 @@ export type SignalMode = "stream" | "video";
 export type PeerRole = "host" | "viewer" | "participant";
 
 export type PeerAnnounceSignal = {
-  kind: "peer.announce";
-  mode: SignalMode;
-  role: PeerRole;
-  target_user_id?: string;
+	kind: "peer.announce";
+	mode: SignalMode;
+	role: PeerRole;
+	target_user_id?: string;
 };
 
 export type PeerLeaveSignal = {
-  kind: "peer.leave";
-  mode: SignalMode;
-  role: PeerRole;
-  target_user_id?: string;
+	kind: "peer.leave";
+	mode: SignalMode;
+	role: PeerRole;
+	target_user_id?: string;
 };
 
 export type WebrtcOfferSignal = {
-  kind: "webrtc.offer";
-  mode: SignalMode;
-  target_user_id: string;
-  description: RTCSessionDescriptionInit;
+	kind: "webrtc.offer";
+	mode: SignalMode;
+	target_user_id: string;
+	description: RTCSessionDescriptionInit;
 };
 
 export type WebrtcAnswerSignal = {
-  kind: "webrtc.answer";
-  mode: SignalMode;
-  target_user_id: string;
-  description: RTCSessionDescriptionInit;
+	kind: "webrtc.answer";
+	mode: SignalMode;
+	target_user_id: string;
+	description: RTCSessionDescriptionInit;
 };
 
 export type WebrtcIceSignal = {
-  kind: "webrtc.ice";
-  mode: SignalMode;
-  target_user_id: string;
-  candidate: RTCIceCandidateInit;
+	kind: "webrtc.ice";
+	mode: SignalMode;
+	target_user_id: string;
+	candidate: RTCIceCandidateInit;
 };
 
 export type StreamStatusSignal = {
-  kind: "stream.status";
-  mode: "stream";
-  is_live: boolean;
-  title?: string;
-  target_user_id?: string;
+	kind: "stream.status";
+	mode: "stream";
+	is_live: boolean;
+	title?: string;
+	target_user_id?: string;
 };
 
 export type SignalPayload =
-  | PeerAnnounceSignal
-  | PeerLeaveSignal
-  | WebrtcOfferSignal
-  | WebrtcAnswerSignal
-  | WebrtcIceSignal
-  | StreamStatusSignal;
+	| PeerAnnounceSignal
+	| PeerLeaveSignal
+	| WebrtcOfferSignal
+	| WebrtcAnswerSignal
+	| WebrtcIceSignal
+	| StreamStatusSignal;
 
 export const ROOM_KINDS: RoomKind[] = ["text", "voice", "video", "stream"];

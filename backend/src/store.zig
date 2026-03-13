@@ -26,6 +26,16 @@ pub const StreamSession = struct {
     live: bool,
 };
 
+pub fn deinitStreamSession(allocator: std.mem.Allocator, stream: StreamSession) void {
+    allocator.free(stream.id);
+    allocator.free(stream.room_id);
+    allocator.free(stream.host_user_id);
+    allocator.free(stream.title);
+    allocator.free(stream.stream_key);
+    allocator.free(stream.ingest_server_url);
+    allocator.free(stream.playback_url);
+}
+
 pub const VoiceParticipant = struct {
     room_id: []const u8,
     user_id: []const u8,
@@ -135,15 +145,7 @@ pub const State = struct {
         }
         self.messages.deinit(allocator);
 
-        for (self.streams.items) |stream| {
-            allocator.free(stream.id);
-            allocator.free(stream.room_id);
-            allocator.free(stream.host_user_id);
-            allocator.free(stream.title);
-            allocator.free(stream.stream_key);
-            allocator.free(stream.ingest_server_url);
-            allocator.free(stream.playback_url);
-        }
+        for (self.streams.items) |stream| deinitStreamSession(allocator, stream);
         self.streams.deinit(allocator);
 
         for (self.voice_participants.items) |participant| {

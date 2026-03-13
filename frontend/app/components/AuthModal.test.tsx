@@ -5,29 +5,29 @@ import { describe, expect, it, vi } from "vitest";
 import { AuthModal } from "./AuthModal";
 
 describe("AuthModal", () => {
-  it("starts in login mode", () => {
-    render(<AuthModal onClose={() => {}} onSuccess={() => {}} />);
+	it("starts in login mode", () => {
+		render(<AuthModal onClose={() => {}} onSuccess={() => {}} />);
 
-    expect(screen.getByRole("heading", { name: "Welcome" })).toBeVisible();
-    expect(screen.queryByPlaceholderText("Username")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Confirm Password")).not.toBeInTheDocument();
-  });
+		expect(screen.getByRole("heading", { name: "Welcome" })).toBeVisible();
+		expect(screen.queryByPlaceholderText("Username")).not.toBeInTheDocument();
+		expect(screen.queryByLabelText("Confirm Password")).not.toBeInTheDocument();
+	});
 
-  it("switches to register mode", async () => {
-    const user = userEvent.setup();
-    render(<AuthModal onClose={() => {}} onSuccess={() => {}} />);
-    await user.click(screen.getByRole("tab", { name: "Sign up" }));
+	it("switches to register mode", async () => {
+		const user = userEvent.setup();
+		render(<AuthModal onClose={() => {}} onSuccess={() => {}} />);
+		await user.click(screen.getByRole("tab", { name: "Sign up" }));
 
-    expect(screen.getByRole("heading", { name: "Join Punch" })).toBeVisible();
-    expect(screen.getByLabelText("Username")).toBeVisible();
-    expect(screen.getByLabelText("Confirm Password")).toBeVisible();
-  });
+		expect(screen.getByRole("heading", { name: "Join Punch" })).toBeVisible();
+		expect(screen.getByLabelText("Username")).toBeVisible();
+		expect(screen.getByLabelText("Confirm Password")).toBeVisible();
+	});
 
-  it("calls onClose from cancel action", () => {
-    const onClose = vi.fn();
-    render(<AuthModal onClose={onClose} onSuccess={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+	it("calls onClose from cancel action", () => {
+		const onClose = vi.fn();
+		render(<AuthModal onClose={onClose} onSuccess={() => {}} />);
+		fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
+		expect(onClose).toHaveBeenCalledTimes(1);
+	});
 });

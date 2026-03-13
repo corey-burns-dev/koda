@@ -363,6 +363,16 @@ pub const Db = struct {
         _ = c.sqlite3_step(stmt);
     }
 
+    pub fn deleteStream(self: *Db, stream_id: []const u8) void {
+        const sql = "DELETE FROM streams WHERE id = ?;";
+        var stmt: ?*c.sqlite3_stmt = null;
+        if (c.sqlite3_prepare_v2(self.db, sql, -1, &stmt, null) != c.SQLITE_OK) return;
+        defer _ = c.sqlite3_finalize(stmt);
+
+        bindText(stmt, 1, stream_id);
+        _ = c.sqlite3_step(stmt);
+    }
+
     pub fn insertReaction(self: *Db, reaction: store.Reaction) void {
         const sql =
             \\INSERT OR IGNORE INTO reactions (id, message_id, room_id, user_id, emoji)
